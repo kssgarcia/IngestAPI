@@ -10,7 +10,7 @@ def home():
     return {"Health": "OK"}
 
 @app.post('/file/')
-async def prediction(file: UploadFile = File(...), x: float = Form(...), y: float = Form(...), width: float = Form(...), height: float = Form(...)):
+async def prediction(file: UploadFile = File(...), x: float = Form(0), y: float = Form(0), width: float = Form(0), height: float = Form(0)):
     contents = await file.read()
     img = Image.open(io.BytesIO(contents))
     results = predict(img, x, y, width, height)
