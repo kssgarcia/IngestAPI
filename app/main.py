@@ -9,7 +9,7 @@ from embedding import perform_vector_search
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import List
-
+import json
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -30,6 +30,13 @@ class foodDocument(BaseModel):
     ingredientes: List[str]
 class foodResponse(BaseModel):
     food: List[List[foodDocument]]
+
+
+class mlPrompt(BaseModel):
+    usermessage: str
+
+class mlresponse(BaseModel):
+    sytemmessage: str
 
 # Modelo de solicitud para el endpoint /vs
 class VectorSearchRequest(BaseModel):
@@ -95,5 +102,32 @@ async def vector_search(req: VectorSearchRequest):
     try:
         results = await perform_vector_search(req.query, req.index)
         return {"results": results}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+  # Endpoint para la búsqueda vectorial
+@app.post("/nlp", response_model=mlresponse)
+async def NLP(req: mlPrompt):
+    try:
+        content=req
+        # Example: reuse your existing OpenAI setup
+        from openai import OpenAI
+
+        # Point to the local server
+        client = OpenAI(base_url="https://lznfhzqb-1233.use2.devtunnels.ms/v1", api_key="lm-studio")
+
+        completion = client.chat.completions.create(
+        model="model-identifier",
+        messages=[
+            {"role": "system", "content": "Always answer in rhymes."},
+            {"role": "user", "content": content.dict()["usermessage"]}
+        ],
+        temperature=0.7,
+        )
+        logger.info("Retornanado")
+        print(completion.choices[0].message.content)
+        logger.info("Retornanado")
+        return mlresponse(sytemmessage=(completion.choices[0].message.content))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
