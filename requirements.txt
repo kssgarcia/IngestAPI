@@ -5,3 +5,8 @@ torch
 ultralytics
 opencv-python-headless
 numpy
+pyyaml
+motor
+uvicorn
+pydantic
+pymongo

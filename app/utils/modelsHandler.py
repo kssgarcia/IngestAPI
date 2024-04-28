@@ -7,6 +7,8 @@ from ultralytics import YOLO
 from pydantic import BaseModel
 from typing import List
 
+BASE_DIR = Path(__file__).resolve(strict=True).parent
+
 class Prediction(BaseModel):
     prediction: str
     prob: float
@@ -14,10 +16,8 @@ class Prediction(BaseModel):
 class PredictionResponse(BaseModel):
     predictions: List[Prediction]
 
-BASE_DIR = Path(__file__).resolve(strict=True).parent
-
 def predict(img: Image, x: float, y: float, width: float, height: float):
-    model = YOLO('model/scrap100.pt')
+    model = YOLO('models/scrap100.pt')
     left = x - width / 2
     top = y - height / 2
     if x+y+width+height > 0:

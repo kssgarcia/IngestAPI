@@ -1,11 +1,11 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from model.model import predict
+from utils.modelsHandler import predict
 from PIL import Image
 import io
 import logging
 import os
-from mongo_client import get_mongo_client
-from embedding import perform_vector_search
+from utils.mongo_client import get_mongo_client
+from utils.embedding import perform_vector_search
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import List
@@ -31,7 +31,6 @@ class foodDocument(BaseModel):
 class foodResponse(BaseModel):
     food: List[List[foodDocument]]
 
-
 class mlPrompt(BaseModel):
     usermessage: str
 
@@ -42,7 +41,6 @@ class mlresponse(BaseModel):
 class VectorSearchRequest(BaseModel):
     query: str
     index: str  # Índice de búsqueda en la base de datos
-
 
 # Modelo de respuesta para el endpoint /vs
 class VectorSearchResponse(BaseModel):

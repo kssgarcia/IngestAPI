@@ -1,7 +1,7 @@
 from pydantic import BaseModel
 from typing import List
 from fastapi import FastAPI, File, UploadFile, HTTPException, Depends
-from mongo_client import get_mongo_client
+from utils.mongo_client import get_mongo_client
 from dotenv import load_dotenv
 from pymongo.mongo_client import MongoClient
 import os
@@ -18,8 +18,6 @@ logger = logging.getLogger(__name__)
 class VectorSearchRequest(BaseModel):
     query: str
     index: str  # Índice de búsqueda en la base de datos
-
-
 
 # Modelo de respuesta para el endpoint /vs
 class VectorSearchResponse(BaseModel):
