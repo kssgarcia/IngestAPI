@@ -4,6 +4,15 @@ from torchvision.transforms.functional import crop
 from torchvision import transforms
 from PIL import Image
 from ultralytics import YOLO
+from pydantic import BaseModel
+from typing import List
+
+class Prediction(BaseModel):
+    prediction: str
+    prob: float
+
+class PredictionResponse(BaseModel):
+    predictions: List[Prediction]
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
 
@@ -23,4 +32,6 @@ def predict(img: Image, x: float, y: float, width: float, height: float):
     names = result[0].names
     probs = result[0].probs.top5
     conf = result[0].probs.top5conf.tolist()
-    return [{'prediction': names[key], 'prob': conf[i]} for i,key in enumerate(probs)]
+    response=[Prediction(prediction=names[key], prob=conf[i]) for i,key in enumerate(probs)]
+    return PredictionResponse(predictions=response)
+# {'prediction': names[key], 'prob': conf[i]}
