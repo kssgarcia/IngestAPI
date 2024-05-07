@@ -1,8 +1,6 @@
 fastapi
 pillow
 torchvision
-torch
 ultralytics
 opencv-python-headless
 numpy
-llama-cpp-python
