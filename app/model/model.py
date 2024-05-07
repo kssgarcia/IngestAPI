@@ -5,6 +5,9 @@ from torchvision import transforms
 from PIL import Image
 from ultralytics import YOLO
 
+import json
+from llama_cpp import Llama
+
 BASE_DIR = Path(__file__).resolve(strict=True).parent
 
 def predict(img: Image, x: float, y: float, width: float, height: float):
@@ -42,6 +45,22 @@ def predict(img: Image, x: float, y: float, width: float, height: float):
         probs = result[0].probs.top5
         conf = result[0].probs.top5conf.tolist()
         return [{'prediction': names[key], 'prob': conf[i]} for i,key in enumerate(probs)]
+
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        return [{"prediction": "Error processing the image", "prob": 0}]
+
+def llama_predict(prompt: str):
+    try:
+        llm = Llama(
+            model_path="model/llama-3-8b-Instruct.Q2_K.gguf",
+            chat_format="llama-2"
+        )
+        prompt = '''
+        Why is the sky blue?
+        '''
+        output = llm(prompt, max_tokens=5120, echo=False)
+        return json.dumps(output, indent=2)
 
     except Exception as e:
         print(f"An error occurred: {str(e)}")

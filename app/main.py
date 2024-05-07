@@ -1,5 +1,5 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
-from model.model import predict
+from model.model import predict, llama_predict
 from PIL import Image, UnidentifiedImageError
 import io
 
@@ -30,3 +30,7 @@ async def prediction(file: UploadFile = File(...), x: float = Form(0), y: float 
     
     return results
 
+@app.post('/llama/')
+async def prediction_llama(prompt: str):
+    results = llama_predict(prompt)
+    return results

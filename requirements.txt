@@ -5,3 +5,4 @@ torch
 ultralytics
 opencv-python-headless
 numpy
+llama-cpp-python
