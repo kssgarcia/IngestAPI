@@ -8,18 +8,22 @@ app = FastAPI()
 
 # Initialize the model globally and set it to None initially
 llm = None
-try:
-    # Load the model once when the server starts
-    llm = Llama(
-        model_path="model/llama-3-8b-Instruct.Q2_K.gguf",
-        chat_format="llama-2",
-        n_gpu_layers=-1
-    )
-    print("Model loaded successfully.")
-except Exception as e:
-    print(f"Failed to load model: {str(e)}")
-    # You might want to handle this differently depending on your application needs
-    raise RuntimeError("Failed to load the model at startup")
+
+@app.on_event("startup")
+async def load_model():
+    global llm
+    try:
+        # Load the model once when the server starts
+        llm = Llama(
+            model_path="model/Phi-3-mini-128k-instruct.IQ1_S.gguf",
+            chat_format="llama-2",
+            n_gpu_layers=-1
+        )
+        print("Model loaded successfully.")
+    except Exception as e:
+        print(f"Failed to load model: {str(e)}")
+        # Raising an exception here will stop the app from starting if the model cannot be loaded
+        raise RuntimeError("Failed to load the model at startup")
 
 @app.get("/")
 def home():
@@ -52,7 +56,6 @@ async def prediction(file: UploadFile = File(...), x: float = Form(0), y: float 
         raise HTTPException(status_code=500, detail=f"An error occurred while processing the image: {str(e)}")
     try:
         results = predict(img, x, y, width, height)
+        return results
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"An error occurred during prediction: {str(e)}")
-    
-    return results
