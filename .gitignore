@@ -1,2 +1,2 @@
-app/model/llama-3-8b-Instruct.Q2_K.gguf
-app/model/Phi-3-mini-128k-instruct.IQ1_S.gguf
+app/models/llama-3-8b-Instruct.Q2_K.gguf
+app/models/Phi-3-mini-128k-instruct.IQ1_S.gguf
