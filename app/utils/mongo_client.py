@@ -18,11 +18,10 @@ async def get_mongo_client():
     # Obtener la cadena de conexión desde una variable de entorno
     MONGO_USERNAME = os.getenv("MONGO_USERNAME")
     MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
-    MONGO_DB_NAME = os.getenv("MONGO_DB_NAME")
-    MONGO_CLUSTER_URI = os.getenv("MONGO_CLUSTER_URI")
+  
 
     # Obtener la cadena de conexión desde una variable de entorno
-    MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@{MONGO_CLUSTER_URI}/{MONGO_DB_NAME}?retryWrites=true&w=majority"
+    MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 
     # Crear el cliente de forma asíncrona

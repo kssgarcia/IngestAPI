@@ -16,15 +16,17 @@ class Prediction(BaseModel):
 class PredictionResponse(BaseModel):
     predictions: List[Prediction]
 
-def predict(img: Image, x: float, y: float, width: float, height: float):
-    model = YOLO('models/scrap100.pt')
+# Inicializa el modelo una vez
+model = YOLO('models/scrap100.pt')
+
+def predict(img: Image, x: float, y: float, width: float, height: float, model: YOLO):
     left = x - width / 2
     top = y - height / 2
-    if x+y+width+height > 0:
+    if x + y + width + height > 0:
         image = crop(img, top=int(top), left=int(left), height=int(height), width=int(width))
     else:
         transform = transforms.Compose([
-            transforms.Resize((640,640)),  # Resize the image
+            transforms.Resize((640, 640)),  # Resize the image
             transforms.ToTensor(),  # Convert the image to a PyTorch tensor
         ])
         image = transform(img).unsqueeze(0)  
@@ -32,6 +34,6 @@ def predict(img: Image, x: float, y: float, width: float, height: float):
     names = result[0].names
     probs = result[0].probs.top5
     conf = result[0].probs.top5conf.tolist()
-    response=[Prediction(prediction=names[key], prob=conf[i]) for i,key in enumerate(probs)]
+    response = [Prediction(prediction=names[key], prob=conf[i]) for i, key in enumerate(probs)]
     return PredictionResponse(predictions=response)
 # {'prediction': names[key], 'prob': conf[i]}

@@ -91,7 +91,7 @@ async def perform_vector_search(query: str, index: str) -> List[str]:
         await save_embedding_to_db(query, embedding, db)
 
     logger.info("a que vector voy")
-    collection_namse = None
+    collection_name = None
     if index == "nombreIngreEmbedding":
         collection_name = "ingredientes"
     elif index == "nombreEmbedding":
@@ -106,15 +106,20 @@ async def perform_vector_search(query: str, index: str) -> List[str]:
         {"$vectorSearch": {
             "queryVector": generateEmbedding(query),
             "path": index,
-            "numCandidates": 100,
-            "limit": 3,
+            "numCandidates": 10,
+            "limit": 1,
             "index": index,
         }}
     ])
 
-    response_items = []
-    for document in results:
-        response_items.append(foodDocument(nombre=document["nombre"], ingredientes=document["ingredientes"]))  # Reemplaza 'nombre' por el campo real de tu documento
+    logger.info("Busqueda terminada")
+    listrsul=list(results)
+    response_items = None
+    if "nombre" in listrsul[0] and "ingredientes" in listrsul[0]:
+        response_items=foodDocument(nombre=listrsul[0]["nombre"], ingredientes=listrsul[0]["ingredientes"])
+    else:
+        logger.warning(f"Documento faltante de campos requeridos: {results[0]}")
+    
     logger.info("mostrando resultados de busqueda")
     print(response_items)
     return response_items
