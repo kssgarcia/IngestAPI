@@ -24,8 +24,8 @@ class VectorSearchResponse(BaseModel):
     results: List[str]
 
 class foodDocument(BaseModel):
-    nombre:str
-    ingredientes: List[str]
+    name:str
+    ingredients: List[str]
 
 class foodResponse(BaseModel):
     food: List[foodDocument]
@@ -115,8 +115,8 @@ async def perform_vector_search(query: str, index: str) -> List[str]:
     logger.info("Busqueda terminada")
     listrsul=list(results)
     response_items = None
-    if "nombre" in listrsul[0] and "ingredientes" in listrsul[0]:
-        response_items=foodDocument(nombre=listrsul[0]["nombre"], ingredientes=listrsul[0]["ingredientes"])
+    if "name" in listrsul[0] and "ingredients" in listrsul[0]:
+        response_items=foodDocument(name=listrsul[0]["name"], ingredients=listrsul[0]["ingredients"])
     else:
         logger.warning(f"Documento faltante de campos requeridos: {results[0]}")
     

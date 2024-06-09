@@ -121,13 +121,15 @@ async def prediction(
         logger.info("Finished the predict function")
 
         # Búsqueda vectorial
-        foods = []  # 5 listas de 3 documentos
+        
+        # foods = []  # 5 listas de 3 documentos
+        
+        # foods.append(await perform_vector_search(query=pred[0]["prediction"], index="nombreEmbedding"))
         pred = results.dict().get("predictions")
-        foods.append(await perform_vector_search(query=pred[0]["prediction"], index="nombreEmbedding"))
         logger.info("sacando response")
         
         # Retorna las predicciones y los resultados de la búsqueda vectorial
-        return {"predictions": pred, "Plate": foods}
+        return {"predictions": pred}
     except HTTPException as e:
         logger.error(f"HTTPException in predict function: {str(e.detail)}")
         raise
