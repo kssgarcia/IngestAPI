@@ -169,19 +169,20 @@ def web_search(state):
     """
     print("---WEB SEARCH---")
     question = state["question"]
-    web_documents = state["documents"]
+    documents = state["documents"]
     print (question)
+    print(documents)
+
+    # Web search
+    from langchain_community.retrievers import TavilySearchAPIRetriever
 
     web_search_tool = TavilySearchAPIRetriever(k=3)
-    docs = web_search_tool.invoke(str(question))
-    web_results = "\n".join([d["content"] for d in docs if "content" in d])
-    web_results = Document(page_content=web_results)
-    web_documents.append(web_results)
-
+    docs = web_search_tool.invoke(question)
+    documents.append(docs)
     print("---WEB SEARCH RESULTS---")
-    print(web_documents)
+    print(docs)
 
-    return {"documents": web_documents, "question": question}
+    return {"documents": documents, "question": question}
 
 
 ### Edges

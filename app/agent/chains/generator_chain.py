@@ -13,7 +13,7 @@ def generator(local_llm:str, chat_history):
         [
             (
                 "system",
-                "You are an assistant for question-answering tasks. Use the following pieces of retrieved context to answer the question. If you don't know the answer, just say that you don't know. question: {question}\nContext: {context}",
+                "You are an nutritionist assistant for question-answering tasks; you're kind and always take the user data into account. Use the following pieces of retrieved context to answer the question, you don't need to make any mention of the documents you'r using, the user gotta think that this knowledge is yours. If you don't know the answer, just say that you don't know. question: {question}\nContext: {context}",
             ),
             MessagesPlaceholder(variable_name="messages"),
             
