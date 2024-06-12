@@ -10,7 +10,8 @@ motor
 uvicorn
 pydantic
 pymongo
-
+openai
+ultralytics
 
 langchain
 langchain_community
@@ -23,3 +24,5 @@ marker-pdf
 markdown
 unstructured
 langchain-chroma
+unstructured
+markdown

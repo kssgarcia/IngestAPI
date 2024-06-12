@@ -12,7 +12,13 @@ import os
 from utils.mongo_client import get_mongo_client
 from utils.embedding import perform_vector_search
 from dotenv import load_dotenv
-from modelHandler import *
+from utils.modelsHandler import predict
+
+#agent utils
+from agent import graph_workflow_app
+from pprint import pprint
+
+
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
 
@@ -36,24 +42,6 @@ class PredictionWithFoodsResponse(BaseModel):
 
 # Inicializa el modelo una vez
 model = YOLO('models/scrap100.pt')
-
-def predict(img: Image, x: float, y: float, width: float, height: float, model: YOLO):
-    left = x - width / 2
-    top = y - height / 2
-    if x + y + width + height > 0:
-        image = crop(img, top=int(top), left=int(left), height=int(height), width=int(width))
-    else:
-        transform = transforms.Compose([
-            transforms.Resize((640, 640)),  # Resize the image
-            transforms.ToTensor(),  # Convert the image to a PyTorch tensor
-        ])
-        image = transform(img).unsqueeze(0)
-    result = model(image)
-    names = result[0].names
-    probs = result[0].probs.top5
-    conf = result[0].probs.top5conf.tolist()
-    response = [Prediction(prediction=names[key], prob=conf[i]) for i, key in enumerate(probs)]
-    return PredictionResponse(predictions=response)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -111,6 +99,9 @@ async def prediction(
 
         results = predict(img, x, y, width, height, model)
 
+        logger.info("predict function finished")
+
+
         # Load mongo client
         client = await get_mongo_client()
         DB_NAME = os.getenv("MONGO_DB_NAME")
@@ -147,26 +138,32 @@ async def vector_search(req: VectorSearchRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Endpoint para la búsqueda vectorial
-@app.post("/nlp", response_model=mlresponse)
-async def NLP(req: mlPrompt):
+
+
+# Agent Endponit
+langgraph_app = graph_workflow_app.setup_lang_app()
+
+class InputData(BaseModel):
+    message: str
+
+
+@app.post("/langgraph/agent/")
+async def process_message(data: InputData):
     try:
-        content = req
-        # Example: reuse your existing OpenAI setup
-        from openai import OpenAI
-
-        # Point to the local server
-        client = OpenAI(base_url="https://lznfhzqb-1233.use2.devtunnels.ms/v1", api_key="lm-studio")
-
-        completion = client.chat.completions.create(
-            model="model-identifier",
-            messages=[
-                {"role": "system", "content": "Always answer in rhymes."},
-                {"role": "user", "content": content.dict()["usermessage"]}
-            ],
-            temperature=0.7,
-        )
-        logger.info("Retornanado")
-        return mlresponse(sytemmessage=completion.choices[0].message.content)
+        thread = {"configurable": {"thread_id": "4"}}
+        result = []
+        inputs = {"question": data.message}
+        for event in langgraph_app.stream(inputs, stream_mode="values"):
+            print(event)
+            for key, value in event.items():
+                # Node
+                print(value)
+                pprint(f"Node '{key}':")
+                
+                # pprint(value["keys"], indent=2, width=80, depth=None)
+            pprint("\n---\n")
+        return(event["generation"])
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
+    
+   
