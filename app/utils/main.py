@@ -12,6 +12,7 @@ import os
 from utils.mongo_client import get_mongo_client
 from utils.embedding import perform_vector_search
 from dotenv import load_dotenv
+from modelHandler import *
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
 

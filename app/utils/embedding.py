@@ -7,6 +7,7 @@ from pymongo.mongo_client import MongoClient
 import os
 import logging
 
+
 load_dotenv()
 
 # Set up logging
