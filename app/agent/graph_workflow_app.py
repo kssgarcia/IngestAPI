@@ -6,16 +6,29 @@ from pprint import pprint
 
 # Define the nodes
 def setup_lang_app():
-    workflow = StateGraph(GraphState) 
+    workflow = StateGraph(GraphState)
+    workflow.add_node("branch", branch)# start node
+    workflow.add_node("generateCommon", generateCommon)  #generate common kind answers
     workflow.add_node("retrieve", retrieve)  # retrieve
+    workflow.add_node("analysis", formatuserdata)  # userdata
     workflow.add_node("grade_documents", grade_documents)  # grade documents
     workflow.add_node("generate", generate)  # generatae
     workflow.add_node("transform_query", transform_query)  # transform_query
     workflow.add_node("web_search_node", web_search)  # web search
 
     # Build graph
-    workflow.set_entry_point("retrieve")
-    workflow.add_edge("retrieve", "grade_documents")
+    workflow.set_entry_point("branch"),
+    workflow.add_conditional_edges(
+        "branch",
+        nutritionRequired,
+        {
+            "generateCommon": "generateCommon",
+            "retrieve": "retrieve"
+        }
+    )
+    workflow.add_edge("generateCommon", END)
+    workflow.add_edge("retrieve", "analysis")
+    workflow.add_edge("analysis", "grade_documents")
     workflow.add_conditional_edges(
         "grade_documents",
         decide_to_generate,
@@ -27,6 +40,7 @@ def setup_lang_app():
     workflow.add_edge("transform_query", "web_search_node")
     workflow.add_edge("web_search_node", "generate")
     workflow.add_edge("generate", END)
+
 
     # Compile
     app = workflow.compile()

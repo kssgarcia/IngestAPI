@@ -15,12 +15,16 @@ class GraphState(TypedDict):
         generation: LLM generation
         web_search: whether to add search
         documents: list of documents
+        user_data: user data
     """
 
     question: str
     generation: str
     web_search: str
     documents: List[str]
+    userdata: dict 
+    nutritionBranch:str
+    diagnosis:str='no'
 
 class Query(BaseModel):
     question: str

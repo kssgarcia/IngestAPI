@@ -3,9 +3,10 @@ from torchvision.transforms.functional import crop
 from torchvision import transforms
 from PIL import Image
 from ultralytics import YOLO
-from pydantic import BaseModel
-from typing import List
+from pydantic import BaseModel, EmailStr
+from typing import List,Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 import io
 import logging
 import os
@@ -143,27 +144,96 @@ async def vector_search(req: VectorSearchRequest):
 # Agent Endponit
 langgraph_app = graph_workflow_app.setup_lang_app()
 
+#user data model 
+
+class Anthropometry(BaseModel):
+    height: float= 0.0
+    weight: float = 0.0
+    BMI: float = 0.0
+    waist_circumference: float = 0.0
+
+class BiochemicalIndicators(BaseModel):
+    glucose: str = ""
+    cholesterol: str = ""
+
+class Diet(BaseModel):
+    ingest_preferences: List[str]= []
+    fruits_and_vegetables: str = ""
+    fiber: str = ""
+    saturated_fats: str = ""
+    sugars: str = ""
+    today_meals: List[str] =[]
+
+class SocialIndicators(BaseModel):
+    marital_status: str = ""
+    income: str = ""
+    access_to_healthy_foods: bool = False
+
+class Goals(BaseModel):
+    reduce_weight: bool = False
+    reduce_waist_circumference: bool = False
+    improve_glucose_cholesterol_levels: bool = False
+    increase_intake_fruits_vegetables_fiber: bool = False
+    reduce_intake_processed_food_saturated_fats_sugars: bool= False
+    increase_physical_activity: bool = False
+    improve_cardio_health: bool = False
+    reduce_diabetes_risks: bool = False
+
+class PotentialDiseases(BaseModel):
+    type_2_diabetes: bool = False
+    heart_diseases: bool = False
+    hypertension: bool = False
+    overweight_obesity: bool = False
+
+class Dietetics(BaseModel):
+    age: int = 0
+    lifestyle: str = ""
+    job: str = ""
+    anthropometry: Anthropometry
+    biochemical_indicators: BiochemicalIndicators
+    diet: Diet
+    social_indicators: SocialIndicators
+    physical_activity: str = ""
+    daily_activities: List[str] = []
+    activities_energy_consumption: int = 0
+    goals: Goals
+    potential_diseases: PotentialDiseases
+
+class UserData(BaseModel):
+    email: str = "noprovided@email.com"
+
+class InputModel(BaseModel):
+    userData: UserData
+    dietetics: Dietetics
+
+
+
+#Input question model
 class InputData(BaseModel):
     message: str
 
 
-@app.post("/langgraph/agent/")
-async def process_message(data: InputData):
+async def generate_response(data: InputData, userData:InputModel):
     try:
         thread = {"configurable": {"thread_id": "4"}}
-        result = []
-        inputs = {"question": data.message}
+        inputs = {"question": data.message, "userdata":userData}
         for event in langgraph_app.stream(inputs, stream_mode="values"):
-            print(event)
+            response_data = []
             for key, value in event.items():
-                # Node
-                print(value)
-                pprint(f"Node '{key}':")
-                
-                # pprint(value["keys"], indent=2, width=80, depth=None)
-            pprint("\n---\n")
-        return(event["generation"])
+                print(key)
+                if key=="generation":
+                    for char  in value:
+                        response_data.append(char)
+                        yield "".join(response_data[-1])
+                        
+                else:
+                    continue
+                # yield "\n".join(response_data) + "\n---\n"# Yield each event as it is generated
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
+
+@app.post("/langgraph/agent/")
+async def process_message(data: InputData, userData:InputModel):
+    return StreamingResponse(generate_response(data=data,userData=userData), media_type="text/plain")
     
    

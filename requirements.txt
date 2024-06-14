@@ -12,6 +12,7 @@ pydantic
 pymongo
 openai
 ultralytics
+httpx
 
 langchain
 langchain_community
