@@ -5,7 +5,7 @@ from PIL import Image
 from ultralytics import YOLO
 from pydantic import BaseModel, EmailStr
 from typing import List,Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 import io
 import logging
@@ -213,27 +213,59 @@ class InputData(BaseModel):
     message: str
 
 
-async def generate_response(data: InputData, userData:InputModel):
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: List[WebSocket] = []
+
+    async def connect(self, websocket: WebSocket):
+        await websocket.accept()
+        self.active_connections.append(websocket)
+
+    def disconnect(self, websocket: WebSocket):
+        self.active_connections.remove(websocket)
+
+    async def send_personal_message(self, message: str, websocket: WebSocket):
+        await websocket.send_text(message)
+
+    async def broadcast(self, message: str):
+        for connection in self.active_connections:
+            await connection.send_text(message)
+
+manager = ConnectionManager()
+
+async def generate_response(websocket: WebSocket, data: InputData, userData: InputModel):
     try:
         thread = {"configurable": {"thread_id": "4"}}
-        inputs = {"question": data.message, "userdata":userData}
+        inputs = {"question": data.message, "userdata": userData}
+        response_data = []
         for event in langgraph_app.stream(inputs, stream_mode="values"):
-            response_data = []
             for key, value in event.items():
-                print(key)
-                if key=="generation":
-                    for char  in value:
-                        response_data.append(char)
-                        yield "".join(response_data[-1])
-                        
-                else:
-                    continue
-                # yield "\n".join(response_data) + "\n---\n"# Yield each event as it is generated
+                if key == "generation":
+                    response_data.append(value)
+                    await manager.send_personal_message("".join(response_data), websocket)
+        await manager.send_personal_message("END_OF_RESPONSE", websocket)
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
+        await websocket.send_text(f"Error processing message: {str(e)}")
+    except Exception as e:
+        await websocket.send_text(f"Error processing message: {str(e)}")
+
+@app.websocket("/ws/langgraph/agent/")
+async def websocket_endpoint(websocket: WebSocket):
+    await manager.connect(websocket)
+    try:
+        while True:
+            data = await websocket.receive_json()
+            print(data["message"])
+            message = InputData(message=data["message"])
+            user_data = InputModel(**data["userData"])
+            await generate_response(websocket, message, user_data)
+            await websocket.send_text(f"Received message: {message.message}")
+            await websocket.send_text(f"Received user data: {user_data.userData.email}")
+    except WebSocketDisconnect:
+        manager.disconnect(websocket)
 
 @app.post("/langgraph/agent/")
-async def process_message(data: InputData, userData:InputModel):
-    return StreamingResponse(generate_response(data=data,userData=userData), media_type="text/plain")
+async def process_message(data: InputData, userData: InputModel):
+    return StreamingResponse(generate_response(data=data, userData=userData), media_type="text/plain")
     
    
