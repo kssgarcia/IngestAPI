@@ -16,6 +16,7 @@ def setup_lang_app():
     workflow.add_node("transform_query", transform_query)  # transform_query
     workflow.add_node("web_search_node", web_search)  # web search
 
+
     # Build graph
     workflow.set_entry_point("branch"),
     workflow.add_conditional_edges(
@@ -26,7 +27,7 @@ def setup_lang_app():
             "retrieve": "retrieve"
         }
     )
-    workflow.add_edge("generateCommon", END)
+    workflow.add_edge("generateCommon",END)
     workflow.add_edge("retrieve", "analysis")
     workflow.add_edge("analysis", "grade_documents")
     workflow.add_conditional_edges(
@@ -40,6 +41,7 @@ def setup_lang_app():
     workflow.add_edge("transform_query", "web_search_node")
     workflow.add_edge("web_search_node", "generate")
     workflow.add_edge("generate", END)
+   
 
 
     # Compile

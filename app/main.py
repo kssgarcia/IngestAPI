@@ -4,7 +4,7 @@ from torchvision import transforms
 from PIL import Image
 from ultralytics import YOLO
 from pydantic import BaseModel, EmailStr
-from typing import List,Optional
+from typing import List,Optional, Dict
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 import io
@@ -14,6 +14,15 @@ from utils.mongo_client import get_mongo_client
 from utils.embedding import perform_vector_search
 from dotenv import load_dotenv
 from utils.modelsHandler import predict
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.orm import sessionmaker, declarative_base
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
+from sqlalchemy.orm import sessionmaker, declarative_base
+
+from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
+import hashlib
+import uuid
+from fastapi.responses import JSONResponse
 
 #agent utils
 from agent import graph_workflow_app
@@ -144,85 +153,89 @@ async def vector_search(req: VectorSearchRequest):
 # Agent Endponit
 langgraph_app = graph_workflow_app.setup_lang_app()
 
-#user data model 
+# User data model 
 
 class Anthropometry(BaseModel):
-    height: float= 0.0
-    weight: float = 0.0
-    BMI: float = 0.0
-    waist_circumference: float = 0.0
+    height: Optional[float] = 0.0
+    weight: Optional[float] = 0.0
+    BMI: Optional[float] = 0.0
+    waist_circumference: Optional[float] = 0.0
 
 class BiochemicalIndicators(BaseModel):
-    glucose: str = ""
-    cholesterol: str = ""
+    glucose: Optional[str] = ""
+    cholesterol: Optional[str] = ""
 
 class Diet(BaseModel):
-    ingest_preferences: List[str]= []
-    fruits_and_vegetables: str = ""
-    fiber: str = ""
-    saturated_fats: str = ""
-    sugars: str = ""
-    today_meals: List[str] =[]
+    ingest_preferences: Optional[List[str]] = []
+    fruits_and_vegetables: Optional[str] = ""
+    fiber: Optional[str] = ""
+    saturated_fats: Optional[str] = ""
+    sugars: Optional[str] = ""
+    today_meals: Optional[List[str]] = []
 
 class SocialIndicators(BaseModel):
-    marital_status: str = ""
-    income: str = ""
-    access_to_healthy_foods: bool = False
+    marital_status: Optional[str] = ""
+    income: Optional[str] = ""
+    access_to_healthy_foods: Optional[bool] = False
 
 class Goals(BaseModel):
-    reduce_weight: bool = False
-    reduce_waist_circumference: bool = False
-    improve_glucose_cholesterol_levels: bool = False
-    increase_intake_fruits_vegetables_fiber: bool = False
-    reduce_intake_processed_food_saturated_fats_sugars: bool= False
-    increase_physical_activity: bool = False
-    improve_cardio_health: bool = False
-    reduce_diabetes_risks: bool = False
+    Goals: Optional[List[str]] = []
 
 class PotentialDiseases(BaseModel):
-    type_2_diabetes: bool = False
-    heart_diseases: bool = False
-    hypertension: bool = False
-    overweight_obesity: bool = False
+    PotentialDiseases: Optional[List[str]] = []
 
 class Dietetics(BaseModel):
-    age: int = 0
-    lifestyle: str = ""
-    job: str = ""
-    anthropometry: Anthropometry
-    biochemical_indicators: BiochemicalIndicators
-    diet: Diet
-    social_indicators: SocialIndicators
-    physical_activity: str = ""
-    daily_activities: List[str] = []
-    activities_energy_consumption: int = 0
-    goals: Goals
-    potential_diseases: PotentialDiseases
+    age: Optional[int] = 0
+    lifestyle: Optional[str] = ""
+    job: Optional[str] = ""
+    anthropometry: Optional[Anthropometry] = Anthropometry()
+    biochemical_indicators: Optional[BiochemicalIndicators] = BiochemicalIndicators()
+    diet: Optional[Diet] = Diet()
+    social_indicators: Optional[SocialIndicators] = SocialIndicators()
+    physical_activity: Optional[List[str]] = []
+    daily_activities: Optional[List[str]] = []
+    activities_energy_consumption: Optional[int] = 0
+    goals: Optional[List[str]] =[]
+    potential_diseases: Optional[List[str]] =[]
 
 class UserData(BaseModel):
-    email: str = "noprovided@email.com"
+    name: Optional[str] = "Djduddbdbh"
+    lastName: Optional[str] = "Ejejdnrb"
+    email: Optional[str] = "noprovided@email.com"
+    sessionID: Optional[str] = ""
+    dietetics: Optional[Dietetics] = Dietetics()
 
 class InputModel(BaseModel):
-    userData: UserData
-    dietetics: Dietetics
+    userData: Optional[UserData] = UserData()
 
-
-
-#Input question model
 class InputData(BaseModel):
     message: str
 
 
+# ConnectionManager para gestionar sesiones
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: List[WebSocket] = []
+        self.active_connections: Dict[WebSocket, str] = {}
+        self.user_sessions: Dict[str, List[str]] = {}
 
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
+    async def connect(self, websocket: WebSocket, session_id: str):
+        self.active_connections[websocket] = session_id
+        email = self._get_email_from_session_id(session_id)
+        if email not in self.user_sessions:
+            self.user_sessions[email] = []
+        self.user_sessions[email].append(session_id)
 
     def disconnect(self, websocket: WebSocket):
-        self.active_connections.remove(websocket)
+        session_id = self.active_connections.pop(websocket, None)
+        if session_id:
+            email = self._get_email_from_session_id(session_id)
+            if email in self.user_sessions:
+                self.user_sessions[email].remove(session_id)
+                if not self.user_sessions[email]:
+                    del self.user_sessions[email]
+
+    def _get_email_from_session_id(self, session_id: str) -> str:
+        return session_id.split('-')[0]
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
@@ -233,10 +246,9 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def generate_response(websocket: WebSocket, data: InputData, userData: InputModel):
+async def generate_response(websocket: WebSocket, data: InputData, userData: UserData, session_id: str):
     try:
-        thread = {"configurable": {"thread_id": "4"}}
-        inputs = {"question": data.message, "userdata": userData}
+        inputs = {"question": data.message, "sessionid": session_id, "userdata": userData}
         response_data = []
         for event in langgraph_app.stream(inputs, stream_mode="values"):
             for key, value in event.items():
@@ -245,27 +257,61 @@ async def generate_response(websocket: WebSocket, data: InputData, userData: Inp
                     await manager.send_personal_message("".join(response_data), websocket)
         await manager.send_personal_message("END_OF_RESPONSE", websocket)
     except Exception as e:
-        await websocket.send_text(f"Error processing message: {str(e)}")
-    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
         await websocket.send_text(f"Error processing message: {str(e)}")
 
 @app.websocket("/ws/langgraph/agent/")
 async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
+    logger.info("Before accepting the connection")
+    await websocket.accept()
+    logger.info("Connection accepted")
     try:
+        initial_data = await websocket.receive_json()
+        logger.info(f"Initial data received: {initial_data}")
+
+        user_data = initial_data.get("userData", {})
+        email = user_data.get("email", "")
+        logger.info(f"got email: {user_data}")
+
+        if email:
+            email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()
+            session_id = f"{email_hash}-{uuid.uuid4()}"
+        else:
+            session_id = str(uuid.uuid4())
+        logger.info(f"Got: {session_id}")
+
+        await manager.connect(websocket, session_id)
+        logger.info("Manager connected")
+
+        user_data_model = UserData(**user_data)
+        logger.info("User data model created")
+
         while True:
             data = await websocket.receive_json()
-            print(data["message"])
+            logger.info("Message received")
             message = InputData(message=data["message"])
-            user_data = InputModel(**data["userData"])
-            await generate_response(websocket, message, user_data)
-            await websocket.send_text(f"Received message: {message.message}")
-            await websocket.send_text(f"Received user data: {user_data.userData.email}")
+            await generate_response(websocket, message, user_data_model, session_id)
+            logger.info(f"Response sent for message: {data['message']}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
+        logger.info("WebSocket disconnected")
+    except Exception as e:
+        logger.error(f"Error receiving initial data: {str(e)}")
+        await websocket.send_text(f"Error receiving initial data: {str(e)}")
+
+@app.get("/user/sessions/{email}")
+async def get_user_sessions(email: str):
+    logger.info(f"Fetching sessions for email: {email}")
+    return manager.user_sessions.get(email, [])
+
+@app.get("/session/messages/{session_id}")
+async def get_session_messages(session_id: str):
+    logger.info(f"Fetching messages for session ID: {session_id}")
+    history = SQLChatMessageHistory(session_id, "sqlite:///memory.db")
+    return history.get_messages()
 
 @app.post("/langgraph/agent/")
-async def process_message(data: InputData, userData: InputModel):
+async def process_message(data: InputData, userData: UserData = UserData()):
+    logger.info(f"Processing message: {data.message} | User: {userData.email}")
     return StreamingResponse(generate_response(data=data, userData=userData), media_type="text/plain")
-    
    

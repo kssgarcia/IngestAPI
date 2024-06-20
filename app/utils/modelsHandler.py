@@ -17,7 +17,7 @@ class PredictionResponse(BaseModel):
     predictions: List[Prediction]
 
 # Inicializa el modelo una vez
-model = YOLO('models/scrap100.pt')
+model = YOLO('models/best.pt')
 
 def predict(img: Image, x: float, y: float, width: float, height: float, model: YOLO):
     left = x - width / 2

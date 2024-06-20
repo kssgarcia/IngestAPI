@@ -22,9 +22,10 @@ class GraphState(TypedDict):
     generation: str
     web_search: str
     documents: List[str]
-    userdata: dict 
+    userdata: dict = {}
     nutritionBranch:str
     diagnosis:str='no'
+    sessionid:str=''
 
 class Query(BaseModel):
     question: str

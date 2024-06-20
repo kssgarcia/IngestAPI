@@ -1,7 +1,6 @@
 #state flow definition
 from langchain.schema import Document
-from .chains.generator_chain import generator
-from .chains.generator_chain import commonGenerator
+from .chains.generator_chain import *
 from .chains.retriever_grader_chain import retrieval_grader
 from .chains.rewriter_chain import rewriter
 from .chains.analyser import analyser
@@ -31,20 +30,17 @@ all_splits=text_splitter(docuemt)
 #Embedding and vector store
 vectorstore = store_and_retrieve(all_splits)
 
-#memory
-chat_history = ChatMessageHistory()
- 
 #tools
 web_search_tool = TavilySearchAPIRetriever(k=3)
 retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
 #Chains
-generate_with_summarization=generator(local_llm=local_llm,chat_history=chat_history)
+generator=generator(local_llm=local_llm)
 retrieval_grader=retrieval_grader(local_llm=local_llm)
 question_rewriter=rewriter(local_llm=local_llm)
 analyser=analyser(local_llm=local_llm)
 branchDecider=branchDecider(local_llm=local_llm)
-commonGenerator=commonGenerator(local_llm=local_llm, chat_history=chat_history)
+commonGenerator=commonGenerator(local_llm=local_llm,)
 
 
 
@@ -61,13 +57,13 @@ def branch(state):
     state (Document): The new state with a new nuutritionalBranch key
     """
     print("---BRANCH---")
-
     question=state["question"]
     userdata= state["userdata"]
     diagnosis = state["diagnosis"]
-    print("estoy aqui")
+    sessionid= state["sessionid"]
+
     required = branchDecider.invoke({"sentence":question})
-    return {"question":question, "userdata":userdata, "nutritionBranch":required }
+    return {"question":question, "userdata":userdata, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis}
 
 def nutritionRequired(state):
     """
@@ -83,6 +79,8 @@ def nutritionRequired(state):
     question = state["question"]
     userdata= state["userdata"]
     required=state["nutritionBranch"]
+    diagnosis = state["diagnosis"]
+    sessionid= state["sessionid"]
 
     # Retrieval
     
@@ -105,13 +103,19 @@ def generateCommon(state):
     state(dict): The updated graph state with a new generation key
     """
     question = state["question"]
-    userdata=state["userdata"]
-    print(question)
+    userdata= state["userdata"]
+    required=state["nutritionBranch"]
+    diagnosis = state["diagnosis"]
+    sessionid= state["sessionid"]
+
+
+    summarize_messages(sessionid=sessionid)
     
     print("---GENERATE COMMON---")
 
-    commonGeneration=commonGenerator.invoke(input={"question":question}, config={"configurable": {"session_id": "unused"}})
-    return {"question":question, "generation":commonGeneration}
+    commonGeneration=commonGenerator.invoke(input={"question":question}, config={"configurable": {"session_id": sessionid}})
+    print(commonGeneration)
+    return {"question":question, "generation":commonGeneration, "userdata":userdata, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis}
 
 
 
@@ -128,11 +132,15 @@ def retrieve(state):
     """
     print("---RETRIEVE---")
     question = state["question"]
-    userdata=state["userdata"]
+    user_data=state["userdata"]
+    diagnosis = state["diagnosis"]
+    sessionid= state["sessionid"]
 
     # Retrieval
-    documents = retriever.invoke(question)
-    return {"documents": documents, "question": question}
+    documents = retriever.get_relevant_documents(question)
+    return {"documents": documents, "question": question, "userdata": user_data, "sessionid": sessionid, "diagnosis": diagnosis}
+
+
 
 def formatuserdata(state):
     """ 
@@ -146,13 +154,16 @@ def formatuserdata(state):
     """
     print("---FORMATUSERDATA---")
     user_data = state["userdata"]
-    documents = state["documents"]
-    question = state["question"]
-
+    documents=state["documents"]
+    question=state["question"]
+    sessionid=state["sessionid"]
+    print(user_data)
 
     # Format user data
     formatted_data = (
-        f"Email: {user_data.userData.email}, "
+        f"name:{user_data.name},"
+        f"lastName:{user_data.lastName},"
+        f"Email: {user_data.email}, "
         f"Age: {user_data.dietetics.age}, "
         f"Lifestyle: {user_data.dietetics.lifestyle}, "
         f"Job: {user_data.dietetics.job}, "
@@ -174,22 +185,13 @@ def formatuserdata(state):
         f"Physical Activity: {user_data.dietetics.physical_activity}, "
         f"Daily Activities: {', '.join(user_data.dietetics.daily_activities)}, "
         f"Activities Energy Consumption: {user_data.dietetics.activities_energy_consumption}, "
-        f"Goals: (Reduce Weight: {user_data.dietetics.goals.reduce_weight}, "
-        f"Reduce Waist Circumference: {user_data.dietetics.goals.reduce_waist_circumference}, "
-        f"Improve Glucose Cholesterol Levels: {user_data.dietetics.goals.improve_glucose_cholesterol_levels}, "
-        f"Increase Intake Fruits Vegetables Fiber: {user_data.dietetics.goals.increase_intake_fruits_vegetables_fiber}, "
-        f"Reduce Intake Processed Food Saturated Fats Sugars: {user_data.dietetics.goals.reduce_intake_processed_food_saturated_fats_sugars}, "
-        f"Increase Physical Activity: {user_data.dietetics.goals.increase_physical_activity}, "
-        f"Improve Cardio Health: {user_data.dietetics.goals.improve_cardio_health}, "
-        f"Reduce Diabetes Risks: {user_data.dietetics.goals.reduce_diabetes_risks}), "
-        f"Potential Diseases: (Type 2 Diabetes: {user_data.dietetics.potential_diseases.type_2_diabetes}, "
-        f"Heart Diseases: {user_data.dietetics.potential_diseases.heart_diseases}, "
-        f"Hypertension: {user_data.dietetics.potential_diseases.hypertension}, "
-        f"Overweight Obesity: {user_data.dietetics.potential_diseases.overweight_obesity})"
+        f"Goals: (Reduce Weight: {user_data.dietetics.goals}, "
+        f"Potential Diseases: (Type 2 Diabetes: {user_data.dietetics.potential_diseases}, "
     )
 
-    user_data = analyser.invoke(input={formatted_data})
-    return {"userdata": user_data, "question": question, "documents": documents, "generation":user_data}
+    diagnosys = analyser.invoke(input={formatted_data})
+    print(diagnosys) 
+    return {"userdata": diagnosys, "question": question, "documents": documents,"diagnosis":'si', "sessionid": sessionid}
 
 
 
@@ -207,16 +209,18 @@ def generate(state):
     question = state["question"]
     documents = state["documents"]
     user_data = state["userdata"]
-    print(question, documents)
+    sessionid= state["sessionid"]
 
+    summarize_messages(sessionid=sessionid)
     # RAG generation
-    generation= generate_with_summarization.invoke(
+    generation= generator.invoke(
     {"question": question, "context":documents, "user_data":user_data},
-    {"configurable": {"session_id": "unused"}},)
+    {"configurable": {"session_id": "sessionid"}},)
+    print(generation)
     # generation = rag_chain.invoke({"context": documents, "question": question, "messages":chat_history.messages})
     # chat_history.add_ai_message(generation)
     # print(generation)
-    return {"documents": documents, "question": question, "generation": generation}
+    return {"documents": documents, "question": question, "generation": "generation", "sessionid":sessionid}
 
 
 def grade_documents(state):
@@ -231,8 +235,11 @@ def grade_documents(state):
     """
 
     print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
+    print(state)
     question = state["question"]
     documents = state["documents"]
+    sessionid= state["sessionid"]
+    user_data = state["userdata"]
 
     # Score each doc
     filtered_docs = []
@@ -250,7 +257,7 @@ def grade_documents(state):
             print("---GRADE: DOCUMENT NOT RELEVANT---")
             web_search = "Yes"
             continue
-    return {"documents": filtered_docs, "question": question, "web_search": web_search}
+    return {"documents": filtered_docs, "question": question, "web_search": web_search, "sessionid": sessionid,"userdata": user_data}
 
 
 def transform_query(state):
@@ -265,12 +272,15 @@ def transform_query(state):
     """
 
     print("---TRANSFORM QUERY---")
+    print(state)
     question = state["question"]
     documents = state["documents"]
+    sessionid= state["sessionid"]
+    user_data = state["userdata"]
 
     # Re-write question
     better_question = question_rewriter.invoke({"question": question})
-    return {"documents": documents, "question": better_question}
+    return {"documents": documents, "question": better_question, "sessionid": sessionid, "userdata": user_data}
 
 
 def web_search(state):
@@ -284,11 +294,11 @@ def web_search(state):
         state (dict): Updates documents key with appended web results
     """
     print("---WEB SEARCH---")
+    print(state)
     question = state["question"]
     documents = state["documents"]
-    print (question)
-    print(documents)
-
+    sessionid=state["sessionid"]
+    user_data = state["userdata"]
     # Web search
     from langchain_community.retrievers import TavilySearchAPIRetriever
 
@@ -298,7 +308,7 @@ def web_search(state):
     print("---WEB SEARCH RESULTS---")
     print(docs)
 
-    return {"documents": documents, "question": question}
+    return {"documents": documents, "question": question, "sessionid": sessionid, "user_data": user_data}
 
 
 ### Edges
@@ -314,9 +324,11 @@ def decide_to_generate(state):
     """
 
     print("---ASSESS GRADED DOCUMENTS---")
+    print(state)
     question = state["question"]
     web_search = state["web_search"]
     filtered_documents = state["documents"]
+    sessionid=state["sessionid"]
 
     if web_search == "Yes":
         # All documents have been filtered check_relevance
@@ -329,3 +341,26 @@ def decide_to_generate(state):
         # We have relevant documents, so generate answer
         print("---DECISION: GENERATE---")
         return "generate"
+    
+
+# Finish node
+def finish(state):
+    """
+    node that fnishes the conversation
+
+    Args:
+        state (dict): The current graph state
+
+    Returns:
+        str: Binary decision for next node to call
+    """
+
+    print("---FINISH---")
+    question = state["question"]
+    web_search = state["web_search"]
+    filtered_documents = state["documents"]
+    generation= state["generation"]
+
+
+    return {"question":question}
+
