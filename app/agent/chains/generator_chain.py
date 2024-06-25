@@ -7,6 +7,14 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_models import ChatOllama
+import os
+from dotenv import load_dotenv
+from langchain_mongodb.chat_message_histories import MongoDBChatMessageHistory
+
+load_dotenv()
+MONGO_USERNAME = os.getenv("MONGO_USERNAME")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
+MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 # LLM
 llm = ChatOllama(model="llama3", temperature=0, num_gpu=1)
@@ -87,7 +95,11 @@ def generator(local_llm:str):
     # Run only with message histoy chain
     generate_with_message_history = RunnableWithMessageHistory(
         rag_chain,
-        get_session_history,
+        lambda session_id: MongoDBChatMessageHistory(
+        session_id=session_id,
+        connection_string=MONGO_URI,
+        database_name="snapeatdb",
+        collection_name="chatHistories",),
         input_messages_key="question",
         history_messages_key="messages",
     )
@@ -133,7 +145,11 @@ def commonGenerator(local_llm:str):
     # Run only with message histoy chain
     generate_with_common_message_history = RunnableWithMessageHistory(
         rag_common_chain,
-        get_session_history,
+        lambda session_id: MongoDBChatMessageHistory(
+        session_id=session_id,
+        connection_string=MONGO_URI,
+        database_name="snapeatdb",
+        collection_name="chatHistories",),
         input_messages_key="question",
         history_messages_key="messages",
     )

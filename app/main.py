@@ -28,7 +28,9 @@ from fastapi.responses import JSONResponse
 from agent import graph_workflow_app
 from pprint import pprint
 
-
+#imagetotext
+import ollama
+from ollama import generate
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
 
@@ -250,10 +252,12 @@ async def generate_response(websocket: WebSocket, data: InputData, userData: Use
     try:
         inputs = {"question": data.message, "sessionid": session_id, "userdata": userData}
         response_data = []
-        for event in langgraph_app.stream(inputs, stream_mode="values"):
-            for key, value in event.items():
-                if key == "generation":
-                    response_data.append(value)
+        async for event in langgraph_app.astream_events(inputs, version="v2"):
+            kind= event["event"]
+            if kind == "on_chat_model_stream":
+                data= event["data"]["chunk"].content
+                if data:
+                    response_data.append(data)
                     await manager.send_personal_message("".join(response_data), websocket)
         await manager.send_personal_message("END_OF_RESPONSE", websocket)
     except Exception as e:
@@ -315,3 +319,30 @@ async def process_message(data: InputData, userData: UserData = UserData()):
     logger.info(f"Processing message: {data.message} | User: {userData.email}")
     return StreamingResponse(generate_response(data=data, userData=userData), media_type="text/plain")
    
+
+@app.post("/process-image/")
+async def process_image_endpoint(image: UploadFile = File(...)):
+    try:
+        # Leer la imagen cargada
+        image_bytes = await image.read()
+        image = Image.open(io.BytesIO(image_bytes))
+
+        # Convertir la imagen a bytes
+        with io.BytesIO() as buffer:
+            image.save(buffer, format='PNG')
+            image_bytes = buffer.getvalue()
+
+        # Generar una descripción de la imagen
+        full_response = ''
+        for response in generate(model='llava:13b', 
+                                 prompt="""Please give me the list of all food's ingredients that you see in the image in JSON format, I just want the list, do not tell me anything else (note that xxx is a placeholder for the ingredient name)
+{"ingredients": [xxx, xxx, xxx, xxx, xxx]}. provide the json structure with no premable or explanation""", 
+                                 images=[image_bytes], 
+                                 stream=True,
+                                 format='json',
+                                 ):
+            full_response += response['response']
+
+        return {"description": full_response}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

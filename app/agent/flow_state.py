@@ -92,7 +92,7 @@ def nutritionRequired(state):
         print("---NUTRITION REQUIRED---")
         return "retrieve"
 
-def generateCommon(state):
+async def generateCommon(state):
     """
     Generate common answers to the question
 
@@ -109,13 +109,12 @@ def generateCommon(state):
     sessionid= state["sessionid"]
 
 
-    summarize_messages(sessionid=sessionid)
     
     print("---GENERATE COMMON---")
-
-    commonGeneration=commonGenerator.invoke(input={"question":question}, config={"configurable": {"session_id": sessionid}})
-    print(commonGeneration)
-    return {"question":question, "generation":commonGeneration, "userdata":userdata, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis}
+    messages=[]
+    async for message in commonGenerator.astream(input={"question":question}, config={"configurable": {"session_id": sessionid}}):
+         messages.append(message)
+    return {"question":question, "generation":[AIMessage(content=" ".join(messages))], "userdata":userdata, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis}
 
 
 
@@ -142,7 +141,7 @@ def retrieve(state):
 
 
 
-def formatuserdata(state):
+async def formatuserdata(state):
     """ 
     Analyze user data and format it for it to be used in the model.
 
@@ -157,7 +156,6 @@ def formatuserdata(state):
     documents=state["documents"]
     question=state["question"]
     sessionid=state["sessionid"]
-    print(user_data)
 
     # Format user data
     formatted_data = (
@@ -189,13 +187,14 @@ def formatuserdata(state):
         f"Potential Diseases: (Type 2 Diabetes: {user_data.dietetics.potential_diseases}, "
     )
 
-    diagnosys = analyser.invoke(input={formatted_data})
-    print(diagnosys) 
-    return {"userdata": diagnosys, "question": question, "documents": documents,"diagnosis":'si', "sessionid": sessionid}
+    messages=[]
+    async for message in analyser.astream(input={formatted_data}):
+        messages.append(message)
+    return {"userdata": user_data, "question": question, "documents": documents,"diagnosis":'si',"generation":[AIMessage(content=" ".join(messages))], "sessionid": sessionid}
 
 
 
-def generate(state):
+async def generate(state):
     """
     Generate answer
 
@@ -211,16 +210,17 @@ def generate(state):
     user_data = state["userdata"]
     sessionid= state["sessionid"]
 
-    summarize_messages(sessionid=sessionid)
     # RAG generation
-    generation= generator.invoke(
+    messages=[]	
+    # RAG generation
+    async for message in generate.astream(
     {"question": question, "context":documents, "user_data":user_data},
-    {"configurable": {"session_id": "sessionid"}},)
-    print(generation)
+    {"configurable": {"session_id": sessionid}},):
+        messages.append(message)
     # generation = rag_chain.invoke({"context": documents, "question": question, "messages":chat_history.messages})
     # chat_history.add_ai_message(generation)
     # print(generation)
-    return {"documents": documents, "question": question, "generation": "generation", "sessionid":sessionid}
+    return {"documents": documents, "question": question, "generation": [AIMessage(content=" ".join(messages))], "sessionid":sessionid}
 
 
 def grade_documents(state):
