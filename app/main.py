@@ -329,8 +329,8 @@ async def process_image_endpoint(image: UploadFile = File(...)):
         # Generar una descripción de la imagen
         full_response = ''
         for response in generate(model='llava-phi3', 
-                                 prompt="""Please give me the list of all food's ingredients that you see in the image in JSON format, I just want the list, do not tell me anything else (note that xxx is a placeholder for the ingredient name)
-{"ingredients": [xxx, xxx, xxx, xxx, xxx]}. provide the json structure with no premable or explanation""", 
+                                 prompt="""Please give me the list of all food's ingredients that you see in the image in JSON format, I just want the list, do not tell me anything else (note that xxx is a placeholder for the ingredient name and yyy is the placeholder for the food name)
+                                    {"food_name": yyy, "ingredients": [xxx, xxx, xxx, xxx, xxx]}""", 
                                  images=[image_bytes], 
                                  stream=True,
                                  format='json',
