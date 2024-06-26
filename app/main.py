@@ -190,7 +190,7 @@ class Dietetics(BaseModel):
     diet: Optional[Diet] = Diet()
     social_indicators: Optional[SocialIndicators] = SocialIndicators()
     physical_activity: Optional[List[str]] = []
-    daily_activities: Optional[List[str]] = []
+    daily_activities: Optional[List[dict]] = []
     activities_energy_consumption: Optional[int] = 0
     goals: Optional[List[str]] =[]
     potential_diseases: Optional[List[str]] =[]
