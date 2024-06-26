@@ -3,11 +3,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import PromptTemplate
 
 # LLM
-def analyser(local_llm:str):
-    llm = ChatOllama(model=local_llm, temperature=0)
-
-
-    # Prompt
+def analyser(llm:ChatOllama):
     analysis = PromptTemplate(
         template="""You a nutritionist data analizer and you always complete your taks the best you can\n 
         use the information of the user to describe his actual nutrition state. make enphasis in the user objectives to create your desription\n

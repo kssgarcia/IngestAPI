@@ -7,9 +7,7 @@ from langchain.callbacks.streaming_stdout import StreamingStdOutCallbackHandler
 
 
 #Retrieval grader
-def retrieval_grader(local_llm:str):
-    llm= ChatOllama(model=local_llm, format='json', temperature=0)
-
+def retrieval_grader(llm:ChatOllama):
     prompt = PromptTemplate(
         template="""You are a grader assessing relevance of a retrieved document to a user question. \n
         Here is the retrieved document: \n\n {document} \n\n

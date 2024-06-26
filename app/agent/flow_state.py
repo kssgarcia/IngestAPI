@@ -6,22 +6,17 @@ from .chains.rewriter_chain import rewriter
 from .chains.analyser import analyser
 from .chains.brancher import branchDecider
 from .retriever import *
-
 #state
 from .graph_state import GraphState, Query
-
 #web tool library
-# Web search
 from langchain_community.retrievers import TavilySearchAPIRetriever
-
 #memory libraries
 from langchain_community.chat_message_histories import ChatMessageHistory
 
-
-
-local_llm="llama3"
-
-
+from langchain_community.chat_models import ChatOllama
+local_llm="llava-phi3"
+llm = ChatOllama(model=local_llm, temperature=0, format='json')
+print("--------------------LLM loaded--------------------")
 
 #Document loader
 docuemt=document_loader(filename="TEMASDENUTRICINBSICABook.md")
@@ -35,16 +30,12 @@ web_search_tool = TavilySearchAPIRetriever(k=3)
 retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
 
 #Chains
-generator=generator(local_llm=local_llm)
-retrieval_grader=retrieval_grader(local_llm=local_llm)
-question_rewriter=rewriter(local_llm=local_llm)
-analyser=analyser(local_llm=local_llm)
-branchDecider=branchDecider(local_llm=local_llm)
-commonGenerator=commonGenerator(local_llm=local_llm,)
-
-
-
-
+generator=generator(llm=llm)
+retrieval_grader=retrieval_grader(llm=llm)
+question_rewriter=rewriter(llm=llm)
+analyser=analyser(llm=llm)
+branchDecider=branchDecider(llm=llm)
+commonGenerator=commonGenerator(llm=llm)
 
 def branch(state):
     """
@@ -116,9 +107,6 @@ async def generateCommon(state):
          messages.append(message)
     return {"question":question, "generation":[AIMessage(content=" ".join(messages))], "userdata":userdata, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis}
 
-
-
-
 def retrieve(state):
     """
     Retrieve documents
@@ -138,8 +126,6 @@ def retrieve(state):
     # Retrieval
     documents = retriever.get_relevant_documents(question)
     return {"documents": documents, "question": question, "userdata": user_data, "sessionid": sessionid, "diagnosis": diagnosis}
-
-
 
 async def formatuserdata(state):
     """ 
@@ -192,8 +178,6 @@ async def formatuserdata(state):
         messages.append(message)
     return {"userdata": user_data, "question": question, "documents": documents,"diagnosis":'si',"generation":[AIMessage(content=" ".join(messages))], "sessionid": sessionid}
 
-
-
 async def generate(state):
     """
     Generate answer
@@ -221,7 +205,6 @@ async def generate(state):
     # chat_history.add_ai_message(generation)
     # print(generation)
     return {"documents": documents, "question": question, "generation": [AIMessage(content=" ".join(messages))], "sessionid":sessionid}
-
 
 def grade_documents(state):
     """
@@ -259,7 +242,6 @@ def grade_documents(state):
             continue
     return {"documents": filtered_docs, "question": question, "web_search": web_search, "sessionid": sessionid,"userdata": user_data}
 
-
 def transform_query(state):
     """
     Transform the query to produce a better question.
@@ -281,7 +263,6 @@ def transform_query(state):
     # Re-write question
     better_question = question_rewriter.invoke({"question": question})
     return {"documents": documents, "question": better_question, "sessionid": sessionid, "userdata": user_data}
-
 
 def web_search(state):
     """
@@ -310,8 +291,6 @@ def web_search(state):
 
     return {"documents": documents, "question": question, "sessionid": sessionid, "user_data": user_data}
 
-
-### Edges
 def decide_to_generate(state):
     """
     Determines whether to generate an answer, or re-generate a question.
@@ -342,8 +321,6 @@ def decide_to_generate(state):
         print("---DECISION: GENERATE---")
         return "generate"
     
-
-# Finish node
 def finish(state):
     """
     node that fnishes the conversation
@@ -363,4 +340,3 @@ def finish(state):
 
 
     return {"question":question}
-

@@ -16,82 +16,59 @@ MONGO_USERNAME = os.getenv("MONGO_USERNAME")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
 MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
-# LLM
-llm = ChatOllama(model="llama3", temperature=0, num_gpu=1)
-
-
 # from .memoryMethod.summary import summarize_messages
-summarization_prompt = ChatPromptTemplate.from_messages(
-        [
-            MessagesPlaceholder(variable_name="chat_history"),
-            (
-                "user",
-                "Distill the above chat messages into a single summary message. Include as many specific details as you can. keep the names and the data of the user intact.",
-            ),
-        ]
-    )
-
-
-#summary chain
-summary_chain = summarization_prompt | llm
-
-#Prompt
-prompt = ChatPromptTemplate.from_messages(
-    [
-        (
-            "system",
-            "You are an nutritionist assistant for question-answering tasks. Use the following pieces of retrieved context to answer the questions your patients have. If you don't know the answer, just say that you don't know. question: {question}\nContext: {context} \nYour asnswers always have into account the data of your patients, allowing them to get a personlized answer based on their objectives, diet and possible deseases, so that they can take actions to change their habits or continue with them in case they are good ones: \ndata:{user_data}\n your answers must be in spanish.",
-        ),
-        MessagesPlaceholder(variable_name="messages"),
-        ("human", "{question}")
-        
-    ]
-)
-
-
-
-def get_session_history(session_id):
-    # Usando SQLite como ejemplo de base de datos
-    return SQLChatMessageHistory(session_id, "sqlite:///memory.db")
+# def get_session_history(session_id):
+#     # Usando SQLite como ejemplo de base de datos
+#     return SQLChatMessageHistory(session_id, "sqlite:///memory.db")
 
     # Run with message history and summarisation
-def summarize_messages(sessionid=""):
-        print(sessionid)
-        stored_messages = get_session_history(session_id=sessionid).messages
-        print(stored_messages)
-        if len(stored_messages) <= 8:
-            print("no sumarisation")
-            return False
-        print(len(stored_messages))
-        
-        summary_message = summary_chain.invoke({"chat_history": stored_messages})
-        stored_messages.clear()
-        
-        stored_messages.add_message(summary_message)
+# def summarize_messages(sessionid=""):
+#         print(sessionid)
+#         stored_messages = get_session_history(session_id=sessionid).messages
+#         print(stored_messages)
+#         if len(stored_messages) <= 8:
+#             print("no sumarisation")
+#             return False
+#         print(len(stored_messages))
 
-        return True
+#         summarization_prompt = ChatPromptTemplate.from_messages(
+#                 [
+#                     MessagesPlaceholder(variable_name="chat_history"),
+#                     (
+#                         "user",
+#                         "Distill the above chat messages into a single summary message. Include as many specific details as you can. keep the names and the data of the user intact.",
+#                     ),
+#                 ]
+#             )
+#         summary_chain = summarization_prompt | llm
+        
+#         summary_message = summary_chain.invoke({"chat_history": stored_messages})
+#         stored_messages.clear()
+        
+#         stored_messages.add_message(summary_message)
 
+#         return True
 
 # Post-processing
 def format_docs(docs):
     return "\n\n".join(doc.page_content for doc in docs)
 
-
-
-
-
 #Generator
-def generator(local_llm:str):
-    
-
-    # LLM
-    llm = ChatOllama(model=local_llm, temperature=0)
-
+def generator(llm:ChatOllama):
+    prompt = ChatPromptTemplate.from_messages(
+        [
+            (
+                "system",
+                "You are an nutritionist assistant for question-answering tasks. Use the following pieces of retrieved context to answer the questions your patients have. If you don't know the answer, just say that you don't know. question: {question}\nContext: {context} \nYour asnswers always have into account the data of your patients, allowing them to get a personlized answer based on their objectives, diet and possible deseases, so that they can take actions to change their habits or continue with them in case they are good ones: \ndata:{user_data}\n your answers must be in spanish.",
+            ),
+            MessagesPlaceholder(variable_name="messages"),
+            ("human", "{question}")
+            
+        ]
+    )
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
-    
 
-    # Run only with message histoy chain
     # Run only with message histoy chain
     generate_with_message_history = RunnableWithMessageHistory(
         rag_chain,
@@ -103,18 +80,11 @@ def generator(local_llm:str):
         input_messages_key="question",
         history_messages_key="messages",
     )
-
-    generate_with_summarization = (
-        RunnablePassthrough.assign(messages_summarized=summarize_messages)
-        | generate_with_message_history
-    )
-
+    # generate_with_summarization = (
+    #     RunnablePassthrough.assign(messages_summarized=summarize_messages)
+    #     | generate_with_message_history
+    # )
     return generate_with_message_history
-
-
-
-
-
 
 # Prompt
 promptGeneration = ChatPromptTemplate.from_messages(
@@ -129,15 +99,21 @@ promptGeneration = ChatPromptTemplate.from_messages(
     ]
 )
 
-
 #commonGenerator
-def commonGenerator(local_llm:str):
-
-    # LLM
-    llm = ChatOllama(model=local_llm, temperature=0)
+def commonGenerator(llm:ChatOllama):
 
     # Chain
     rag_common_chain = promptGeneration | llm | StrOutputParser()
+
+    summarization_prompt = ChatPromptTemplate.from_messages(
+            [
+                MessagesPlaceholder(variable_name="chat_history"),
+                (
+                    "user",
+                    "Distill the above chat messages into a single summary message. Include as many specific details as you can. keep the names and the data of the user intact.",
+                ),
+            ]
+        )
 
     #summary chain
     summary_chain = summarization_prompt | llm
@@ -155,11 +131,9 @@ def commonGenerator(local_llm:str):
     )
 
     # Run with message history and summarisation
-    
-
-    generate_common = (
-        RunnablePassthrough.assign(messages_summarized=summarize_messages)
-        | generate_with_common_message_history
-    )
+    # generate_common = (
+    #     RunnablePassthrough.assign(messages_summarized=summarize_messages)
+    #     | generate_with_common_message_history
+    # )
     
     return generate_with_common_message_history

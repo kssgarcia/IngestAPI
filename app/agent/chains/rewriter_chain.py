@@ -4,11 +4,7 @@ from langchain_community.chat_models import ChatOllama
 from langchain_core.output_parsers import StrOutputParser
 
 #Rewriter
-def rewriter(local_llm:str):
-    llm = ChatOllama(model=local_llm, temperature=0)
-
-
-    # Prompt
+def rewriter(llm:ChatOllama):
     re_write_prompt = PromptTemplate(
         template="""You a question re-writer that converts an input question to a better version that is optimized. The optimized one should keep the same languge \n 
         for vectorstore retrieval. Look at the initial and formulate an improved question. \n

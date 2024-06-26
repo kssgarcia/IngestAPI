@@ -1,6 +1,4 @@
 from pathlib import Path
-from torchvision.transforms.functional import crop
-from torchvision import transforms
 from PIL import Image
 from ultralytics import YOLO
 from pydantic import BaseModel, EmailStr
@@ -29,7 +27,6 @@ from agent import graph_workflow_app
 from pprint import pprint
 
 #imagetotext
-import ollama
 from ollama import generate
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
@@ -149,8 +146,6 @@ async def vector_search(req: VectorSearchRequest):
         return {"results": results}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-
 
 # Agent Endponit
 langgraph_app = graph_workflow_app.setup_lang_app()
@@ -319,7 +314,6 @@ async def process_message(data: InputData, userData: UserData = UserData()):
     logger.info(f"Processing message: {data.message} | User: {userData.email}")
     return StreamingResponse(generate_response(data=data, userData=userData), media_type="text/plain")
    
-
 @app.post("/process-image/")
 async def process_image_endpoint(image: UploadFile = File(...)):
     try:
@@ -334,7 +328,7 @@ async def process_image_endpoint(image: UploadFile = File(...)):
 
         # Generar una descripción de la imagen
         full_response = ''
-        for response in generate(model='llava:13b', 
+        for response in generate(model='llava-phi3', 
                                  prompt="""Please give me the list of all food's ingredients that you see in the image in JSON format, I just want the list, do not tell me anything else (note that xxx is a placeholder for the ingredient name)
 {"ingredients": [xxx, xxx, xxx, xxx, xxx]}. provide the json structure with no premable or explanation""", 
                                  images=[image_bytes], 
