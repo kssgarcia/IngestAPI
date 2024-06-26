@@ -20,7 +20,7 @@ from utils.modelsHandler import predict
 from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
 import hashlib
 import uuid
-# from fastapi.responses import JSONResponse
+import json
 
 #agent utils
 from agent import graph_workflow_app
@@ -313,7 +313,7 @@ async def get_session_messages(session_id: str):
 async def process_message(data: InputData, userData: UserData = UserData()):
     logger.info(f"Processing message: {data.message} | User: {userData.email}")
     return StreamingResponse(generate_response(data=data, userData=userData), media_type="text/plain")
-   
+
 @app.post("/process-image/")
 async def process_image_endpoint(image: UploadFile = File(...)):
     try:
@@ -337,6 +337,6 @@ async def process_image_endpoint(image: UploadFile = File(...)):
                                  ):
             full_response += response['response']
 
-        return {"description": full_response}
+        return json.loads(full_response)
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
