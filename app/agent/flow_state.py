@@ -6,6 +6,7 @@ from .chains.rewriter_chain import rewriter
 from .chains.analyser import analyser
 from .chains.brancher import branchDecider
 from .retriever import *
+from .chains.planner import plannerchain
 
 #state
 from .graph_state import GraphState, Query
@@ -17,7 +18,23 @@ from langchain_community.retrievers import TavilySearchAPIRetriever
 #memory libraries
 from langchain_community.chat_message_histories import ChatMessageHistory
 
+#planner
+import re
+# Regex to match expressions of the form E#... = ...[...]
+regex_pattern = r"Plan:\s*(.+?)\s*#(E\d+)\s*=\s*(\w+)\[(.+?)\]"
 
+
+solve_prompt = """Solve the following task or problem. To solve the problem, we have made step-by-step Plan and
+retrieved corresponding Evidence to each Plan. Use them with caution since long evidence might
+contain irrelevant information.
+\n
+{plan}
+\n
+Now solve the question or task according to provided Evidence above. Respond with the answer
+directly with no extra words.
+\n
+Task: {task}
+Response:"""
 
 local_llm="llama3"
 
@@ -41,10 +58,20 @@ question_rewriter=rewriter(local_llm=local_llm)
 analyser=analyser(local_llm=local_llm)
 branchDecider=branchDecider(local_llm=local_llm)
 commonGenerator=commonGenerator(local_llm=local_llm,)
+planner=plannerchain(local_llm=local_llm)
 
 
 
-
+def inicialize(state):
+    question=state["question"]
+    sessionid= state["sessionid"]
+    userdata= state["userdata"]
+    nutritionRequired=state["nutritionBranch"]
+    documents=state["documents"]
+    """     
+    Initializes the state of the document
+    """
+    return {"question":question, "sessionid":sessionid, "userdata":userdata, "nutritionBranch":nutritionRequired, "documents":documents}
 
 def branch(state):
     """
@@ -260,55 +287,55 @@ def grade_documents(state):
     return {"documents": filtered_docs, "question": question, "web_search": web_search, "sessionid": sessionid,"userdata": user_data}
 
 
-def transform_query(state):
-    """
-    Transform the query to produce a better question.
+# def transform_query(state):
+#     """
+#     Transform the query to produce a better question.
 
-    Args:
-        state (dict): The current graph state
+#     Args:
+#         state (dict): The current graph state
 
-    Returns:
-        state (dict): Updates question key with a re-phrased question
-    """
+#     Returns:
+#         state (dict): Updates question key with a re-phrased question
+#     """
 
-    print("---TRANSFORM QUERY---")
-    print(state)
-    question = state["question"]
-    documents = state["documents"]
-    sessionid= state["sessionid"]
-    user_data = state["userdata"]
+#     print("---TRANSFORM QUERY---")
+#     print(state)
+#     question = state["question"]
+#     documents = state["documents"]
+#     sessionid= state["sessionid"]
+#     user_data = state["userdata"]
 
-    # Re-write question
-    better_question = question_rewriter.invoke({"question": question})
-    return {"documents": documents, "question": better_question, "sessionid": sessionid, "userdata": user_data}
+#     # Re-write question
+#     better_question = question_rewriter.invoke({"question": question})
+#     return {"documents": documents, "question": better_question, "sessionid": sessionid, "userdata": user_data}
 
 
-def web_search(state):
-    """
-    Web search based on the re-phrased question.
+# def web_search(state):
+#     """
+#     Web search based on the re-phrased question.
 
-    Args:
-        state (dict): The current graph state
+#     Args:
+#         state (dict): The current graph state
 
-    Returns:
-        state (dict): Updates documents key with appended web results
-    """
-    print("---WEB SEARCH---")
-    print(state)
-    question = state["question"]
-    documents = state["documents"]
-    sessionid=state["sessionid"]
-    user_data = state["userdata"]
-    # Web search
-    from langchain_community.retrievers import TavilySearchAPIRetriever
+#     Returns:
+#         state (dict): Updates documents key with appended web results
+#     """
+#     print("---WEB SEARCH---")
+#     print(state)
+#     question = state["question"]
+#     documents = state["documents"]
+#     sessionid=state["sessionid"]
+#     user_data = state["userdata"]
+#     # Web search
+#     from langchain_community.retrievers import TavilySearchAPIRetriever
 
-    web_search_tool = TavilySearchAPIRetriever(k=3)
-    docs = web_search_tool.invoke(question)
-    documents.append(docs)
-    print("---WEB SEARCH RESULTS---")
-    print(docs)
+#     web_search_tool = TavilySearchAPIRetriever(k=3)
+#     docs = web_search_tool.invoke(question)
+#     documents.append(docs)
+#     print("---WEB SEARCH RESULTS---")
+#     print(docs)
 
-    return {"documents": documents, "question": question, "sessionid": sessionid, "user_data": user_data}
+#     return {"documents": documents, "question": question, "sessionid": sessionid, "user_data": user_data}
 
 
 ### Edges
@@ -343,24 +370,142 @@ def decide_to_generate(state):
         return "generate"
     
 
-# Finish node
-def finish(state):
+#planner
+def get_plan(state):
+    if state["web_search"]=="yes":
+        task = state["question"]
+        result = planner.invoke({"task": task})
+        print(result)
+        # Find all matches in the sample text
+        matches = re.findall(regex_pattern, result.content)
+        print("matches: ", matches)
+        return {"steps": matches, "plan_string": result.content}
+    else:
+        return {"steps": [], "plan_string": ""}
+    
+
+#current task
+def _get_current_task(state):
+    if state["results"] is None:
+        return 1
+    if len(state["results"]) == len(state["steps"]):
+        return None
+    else:
+        return len(state["results"]) + 1
+    
+#Router
+def _route(state):
+    _step = _get_current_task(state)
+    if _step is None:
+        # We have executed all tasks
+        return "solve"
+    else:
+        # We are still executing tasks, loop back to the "tool" node
+        return "tool"
+
+# execute tools
+def tool_execution(state):
+    web_search=state['web_search']
+    nutritionRequired=state['nutritionBranch']
+    """Worker node that executes the tools of a given plan."""
+    if web_search=="yes" and nutritionRequired["nutrition"]=='yes':
+        _step = _get_current_task(state)
+        print(_step)
+        print(state["steps"])
+        _, step_name, tool, tool_input = state["steps"][_step-1]
+        _results = state["results"] or {}
+        for k, v in _results.items():
+            tool_input = tool_input.replace(k, v)
+        if tool == "Google":
+            print("Google")
+            result = web_search.invoke(tool_input)
+        elif tool == "LLM":
+            print("LLM")
+            result = llm.invoke(tool_input)
+        else:
+            raise ValueError
+        _results[step_name] = str(result)
+        return {"results": _results}
+    else:
+        return {"results": ""}
+    
+
+async def solve(state):
     """
-    node that fnishes the conversation
+    Generate answer
 
     Args:
         state (dict): The current graph state
 
     Returns:
-        str: Binary decision for next node to call
+        state (dict): New key added to state, generation, that contains LLM generation
     """
-
-    print("---FINISH---")
+    print("---Solver---")
     question = state["question"]
-    web_search = state["web_search"]
-    filtered_documents = state["documents"]
-    generation= state["generation"]
+    documents = state["documents"]
+    diagnosis= state["diagnosis"]
+    web_search=state["web_search"]
+    user_data = state["userdata"]
+    sessionid= state["sessionid"]
+    image=state["image_file"]
+    nutritionRequired=state["nutritionBranch"]
+
+    plan = ""
+    
+    if web_search=="yes" and nutritionRequired["nutrition"]=='yes' and state["steps"]!=[]:
+        print("-------------Resolver-------------------")
+        for _plan, step_name, tool, tool_input in state["steps"]:
+            _results = state["results"] or {}
+            for k, v in _results.items():
+                tool_input = tool_input.replace(k, v)
+                step_name = step_name.replace(k, v)
+            plan += f"Plan: {_plan}\n{step_name} = {tool}[{tool_input}]"
+        prompt = solve_prompt.format(plan=plan, task=question)
+
+        result = llm.invoke(prompt)
+        messages=[]	
+        async for message in generator.astream(
+        {"question": question, "context":result, "user_data":diagnosis},
+        {"configurable": {"session_id": sessionid}},):
+            messages.append(message)
+
+        return {"result": result.content,"generation": [AIMessage(content=" ".join(messages))]}
+    else:
+        return {"plan_string": plan}
 
 
-    return {"question":question}
+async def recent_messages_add(state):
+    """
+    Generate common answers to the question
+
+    Args:
+    state (dict): The current graph state
+
+    Returns:
+    chat_vectorstore updated with recent messages
+    """
+    question = state["question"]
+    userdata= state["userdata"]
+    required=state["nutritionBranch"]
+    diagnosis = state["diagnosis"]
+    sessionid= state["sessionid"]
+    image=state["image_file"]   
+
+    chat_message_history = MongoDBChatMessageHistory(
+    session_id=sessionid,
+    connection_string=mongo_uri,
+    database_name="snapeatdb",
+    collection_name="chatHistories",
+    )
+
+    decision=memory_decider.invoke(input={"patient_message":question})
+    if decision["valuableinfo"]=='yes':
+        add_lil_memo(question)
+    
+    chat=chat_message_history.messages
+    if len(chat)%5==0:
+        summary(chat[-1:-5])
+        chat.clear()
+
+    return {"memoCreated":decision["valuableinfo"]}
 

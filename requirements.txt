@@ -27,3 +27,5 @@ unstructured
 langchain-chroma
 unstructured
 markdown
+
+chromadb

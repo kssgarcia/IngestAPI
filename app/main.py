@@ -14,10 +14,7 @@ from utils.mongo_client import get_mongo_client
 from utils.embedding import perform_vector_search
 from dotenv import load_dotenv
 from utils.modelsHandler import predict
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
-from sqlalchemy.orm import sessionmaker, declarative_base
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime
-from sqlalchemy.orm import sessionmaker, declarative_base
+import json
 
 from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
 import hashlib
@@ -334,15 +331,20 @@ async def process_image_endpoint(image: UploadFile = File(...)):
 
         # Generar una descripción de la imagen
         full_response = ''
-        for response in generate(model='llava:13b', 
-                                 prompt="""Please give me the list of all food's ingredients that you see in the image in JSON format, I just want the list, do not tell me anything else (note that xxx is a placeholder for the ingredient name)
-{"ingredients": [xxx, xxx, xxx, xxx, xxx]}. provide the json structure with no premable or explanation""", 
-                                 images=[image_bytes], 
-                                 stream=True,
-                                 format='json',
-                                 ):
+        for response in generate(
+            model='llava:13b', 
+            prompt="""Please give me the list of all food's ingredients that you see in the image in JSON format, I just want the list, do not tell me anything else 
+            {"food_name": "food Name", "ingredients": ["ingrdient", "ingredient"]} provide the json structure with no premable or explanation and only return the raw json structure i gave you """, 
+            images=[image_bytes], 
+            stream=True,
+            format='json',
+        ):
             full_response += response['response']
 
-        return {"description": full_response}
+        # Parsear la respuesta a formato JSON
+        json_response = json.loads(full_response)
+
+        return JSONResponse(content=json_response)
+
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return JSONResponse(content={"error": str(e)}, status_code=500)
