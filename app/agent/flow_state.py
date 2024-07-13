@@ -7,6 +7,19 @@ from .chains.analyser import analyser
 from .chains.brancher import branchDecider
 from .retriever import *
 from .chains.planner import plannerchain
+from .chains.memory_decider import memo_decider
+from .chains.memoryMethod.memory_management import summary, add_lil_memo
+
+
+#mongo config
+
+# Obtener la cadena de conexión desde una variable de entorno
+MONGO_USERNAME = os.getenv("MONGO_USERNAME")
+MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
+
+
+# Obtener la cadena de conexión desde una variable de entorno
+mongo_uri = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 #state
 from .graph_state import GraphState, Query
@@ -60,6 +73,7 @@ branchDecider=branchDecider(local_llm=local_llm)
 commonGenerator=commonGenerator(local_llm=local_llm,)
 planner=plannerchain(local_llm=local_llm)
 
+memo_decider=memo_decider(local_llm=local_llm)
 
 
 def inicialize(state):
@@ -498,7 +512,7 @@ async def recent_messages_add(state):
     collection_name="chatHistories",
     )
 
-    decision=memory_decider.invoke(input={"patient_message":question})
+    decision=memo_decider.invoke(input={"patient_message":question})
     if decision["valuableinfo"]=='yes':
         add_lil_memo(question)
     
