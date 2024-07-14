@@ -12,7 +12,7 @@ def setup_lang_app():
     workflow2.add_node("branch", branch)# start node
     workflow2.add_node("generateCommon", generateCommon)  #generate common kind answers
     workflow2.add_node("retrieve", retrieve)  # retrieve documents
-    workflow2.add_node("analysis", formatuserdata)  # userdata
+    # workflow2.add_node("analysis", formatuserdata)  # userdata
     workflow2.add_node("grade_documents", grade_documents)  # grade documents
     workflow2.add_node("generate", generate)  # generatae
     workflow2.add_node("recentmessages", recent_messages_add)#create a lil memo if needed
@@ -30,19 +30,19 @@ def setup_lang_app():
 
     #------------Coninue
     workflow2.add_edge(["branch","retrieve"],"initialize")
-    workflow2.add_edge("initialize", "analysis")
+    workflow2.add_edge("initialize", "plan")
     workflow2.add_edge("initialize", "grade_documents")
 
 
     #--------generate common
 
-    workflow2.add_edge(["solve","generate","generateCommon"],"recentmessages")
+    workflow2.add_edge(["generate","generateCommon"],"recentmessages")
 
     #--------- Retrive based on documents
     # workflow2.add_edge("retrieve", "analysis")
     # workflow2.add_edge("retrieve", "grade_documents")
-    workflow2.add_edge("grade_documents", "plan")
-    workflow2.add_edge(["grade_documents","analysis"], "generate")
+    # workflow2.add_edge("grade_documents", "plan")
+    workflow2.add_edge(["solve","grade_documents"], "generate")
 
     #--------- Conditional
 
@@ -52,13 +52,14 @@ def setup_lang_app():
 
     #-------- Parallel plan
     workflow2.add_edge("plan", "tool")
-    workflow2.add_conditional_edges("tool", _route, {"solve":"solve","tool":"tool"})
+    workflow2.add_conditional_edges("tool", route, {"solve":"solve","tool":"tool"})
     # workflow2.add_edge("solve", "recentmessages")
 
     workflow2.add_edge("recentmessages", END)
 
     app2 = workflow2.compile()
 
+    return app2
 # langgraph_app=setup_lang_app()
 
 # thread = {"configurable": {"thread_id": "4"}}

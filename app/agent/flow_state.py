@@ -8,7 +8,8 @@ from .chains.brancher import branchDecider
 from .retriever import *
 from .chains.planner import plannerchain
 from .chains.memory_decider import memo_decider
-from .chains.memoryMethod.memory_management import summary, add_lil_memo
+from .chains.memory_management import summary, add_lil_memo, get_memories
+from .chains.memoryMethod.memory_setup import document_vector_store
 
 
 #mongo config
@@ -62,7 +63,8 @@ vectorstore = store_and_retrieve(all_splits)
 
 #tools
 web_search_tool = TavilySearchAPIRetriever(k=3)
-retriever=vectorstore.as_retriever(search_type="similarity", search_kwargs={"k": 3})
+retriever=document_vector_store()
+retriever=retriever.as_retriever(search_type="mmr", search_kwargs={"k": 3})
 
 #Chains
 generator=generator(local_llm=local_llm)
@@ -79,15 +81,15 @@ memo_decider=memo_decider(local_llm=local_llm)
 def inicialize(state):
     question=state["question"]
     sessionid= state["sessionid"]
-    userdata= state["userdata"]
+    user_data= state["user_data"]
     nutritionRequired=state["nutritionBranch"]
     documents=state["documents"]
     """     
     Initializes the state of the document
     """
-    return {"question":question, "sessionid":sessionid, "userdata":userdata, "nutritionBranch":nutritionRequired, "documents":documents}
+    return {"question":question, "sessionid":sessionid, "user_data":user_data, "nutritionBranch":nutritionRequired, "documents":documents}
 
-def branch(state):
+async def branch(state):
     """
     Decides wether documents are needed or not based on the question
 
@@ -99,12 +101,14 @@ def branch(state):
     """
     print("---BRANCH---")
     question=state["question"]
-    userdata= state["userdata"]
     diagnosis = state["diagnosis"]
     sessionid= state["sessionid"]
+    diagnosis=state["diagnosis"]
+    user_data=state["user_data"]
+
 
     required = branchDecider.invoke({"sentence":question})
-    return {"question":question, "userdata":userdata, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis}
+    return {"question":question, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis, "user_data":user_data}
 
 def nutritionRequired(state):
     """
@@ -117,11 +121,8 @@ def nutritionRequired(state):
         Binary decision, generate or go into the nutritional branch
     """
     print("---Nutrition Required---")
-    question = state["question"]
-    userdata= state["userdata"]
     required=state["nutritionBranch"]
-    diagnosis = state["diagnosis"]
-    sessionid= state["sessionid"]
+
 
     # Retrieval
     
@@ -144,23 +145,31 @@ async def generateCommon(state):
     state(dict): The updated graph state with a new generation key
     """
     question = state["question"]
-    userdata= state["userdata"]
     required=state["nutritionBranch"]
-    diagnosis = state["diagnosis"]
     sessionid= state["sessionid"]
+    user_data=state["user_data"]
+    message=HumanMessage(content=[],)
+    messages = []
 
-
+    chat_message_history = MongoDBChatMessageHistory(
+    session_id=sessionid,
+    connection_string=mongo_uri,
+    database_name="snapeatdb",
+    collection_name="chatHistories",
+    )
     
+    # if required["nutrition"]=='no':
+    memories=get_memories(question=question)
+    memories.append(user_data)
     print("---GENERATE COMMON---")
-    messages=[]
-    async for message in commonGenerator.astream(input={"question":question}, config={"configurable": {"session_id": sessionid}}):
-         messages.append(message)
-    return {"question":question, "generation":[AIMessage(content=" ".join(messages))], "userdata":userdata, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis}
+    async for message in commonGenerator.astream(input={"question":question, "messages":chat_message_history.messages[-1:-3], "memories":memories}, config={"configurable": {"session_id": sessionid}}):
+        messages.append(message)
+    return { "generation":[AIMessage(content=" ".join(messages))]}
 
 
 
 
-def retrieve(state):
+async def retrieve(state):
     """
     Retrieve documents
 
@@ -171,67 +180,69 @@ def retrieve(state):
         state (dict): New key added to state, documents, that contains retrieved documents
     """
     print("---RETRIEVE---")
+
     question = state["question"]
-    user_data=state["userdata"]
-    diagnosis = state["diagnosis"]
-    sessionid= state["sessionid"]
+    
 
     # Retrieval
-    documents = retriever.get_relevant_documents(question)
-    return {"documents": documents, "question": question, "userdata": user_data, "sessionid": sessionid, "diagnosis": diagnosis}
+    # if nutritionRequired["nutrition"]=='yes':
+    documents = retriever.invoke(question)
+    return {"documents": documents}
 
 
 
-async def formatuserdata(state):
-    """ 
-    Analyze user data and format it for it to be used in the model.
+# async def formatuserdata(state):
+#     """ 
+#     Analyze user data and format it for it to be used in the model.
 
-    Args:
-     state (dict): The current graph state
+#     Args:
+#      state (dict): The current graph state
     
-    Returns:
-        state (dict): New key added to state, userdata, that contains formatted user data
-    """
-    print("---FORMATUSERDATA---")
-    user_data = state["userdata"]
-    documents=state["documents"]
-    question=state["question"]
-    sessionid=state["sessionid"]
+#     Returns:
+#         state (dict): New key added to state, userdata, that contains formatted user data
+#     """
+#     print("---FORMATUSERDATA---")
+#     user_data = state["userdata"]
+#     nutritionRequired=state["nutritionBranch"]
 
-    # Format user data
-    formatted_data = (
-        f"name:{user_data.name},"
-        f"lastName:{user_data.lastName},"
-        f"Email: {user_data.email}, "
-        f"Age: {user_data.dietetics.age}, "
-        f"Lifestyle: {user_data.dietetics.lifestyle}, "
-        f"Job: {user_data.dietetics.job}, "
-        f"Anthropometry: (Height: {user_data.dietetics.anthropometry.height}, "
-        f"Weight: {user_data.dietetics.anthropometry.weight}, "
-        f"BMI: {user_data.dietetics.anthropometry.BMI}, "
-        f"Waist Circumference: {user_data.dietetics.anthropometry.waist_circumference}), "
-        f"Biochemical Indicators: (Glucose: {user_data.dietetics.biochemical_indicators.glucose}, "
-        f"Cholesterol: {user_data.dietetics.biochemical_indicators.cholesterol}), "
-        f"Diet: (Ingest Preferences: {', '.join(user_data.dietetics.diet.ingest_preferences)}, "
-        f"Fruits and Vegetables: {user_data.dietetics.diet.fruits_and_vegetables}, "
-        f"Fiber: {user_data.dietetics.diet.fiber}, "
-        f"Saturated Fats: {user_data.dietetics.diet.saturated_fats}, "
-        f"Sugars: {user_data.dietetics.diet.sugars}, "
-        f"Today Meals: {', '.join(user_data.dietetics.diet.today_meals)}), "
-        f"Social Indicators: (Marital Status: {user_data.dietetics.social_indicators.marital_status}, "
-        f"Income: {user_data.dietetics.social_indicators.income}, "
-        f"Access to Healthy Foods: {user_data.dietetics.social_indicators.access_to_healthy_foods}), "
-        f"Physical Activity: {user_data.dietetics.physical_activity}, "
-        f"Daily Activities: {', '.join(user_data.dietetics.daily_activities)}, "
-        f"Activities Energy Consumption: {user_data.dietetics.activities_energy_consumption}, "
-        f"Goals: (Reduce Weight: {user_data.dietetics.goals}, "
-        f"Potential Diseases: (Type 2 Diabetes: {user_data.dietetics.potential_diseases}, "
-    )
+#     # Format user data
+#     formatted_data = (
+#         f"name:{user_data.name},"
+#         f"lastName:{user_data.lastName},"
+#         f"Email: {user_data.email}, "
+#         f"Age: {user_data.dietetics.age}, "
+#         f"Lifestyle: {user_data.dietetics.lifestyle}, "
+#         f"Job: {user_data.dietetics.job}, "
+#         f"Anthropometry: (Height: {user_data.dietetics.anthropometry.height}, "
+#         f"Weight: {user_data.dietetics.anthropometry.weight}, "
+#         f"BMI: {user_data.dietetics.anthropometry.BMI}, "
+#         f"Waist Circumference: {user_data.dietetics.anthropometry.waist_circumference}), "
+#         f"Biochemical Indicators: (Glucose: {user_data.dietetics.biochemical_indicators.glucose}, "
+#         f"Cholesterol: {user_data.dietetics.biochemical_indicators.cholesterol}), "
+#         f"Diet: (Ingest Preferences: {', '.join(user_data.dietetics.diet.ingest_preferences)}, "
+#         f"Fruits and Vegetables: {user_data.dietetics.diet.fruits_and_vegetables}, "
+#         f"Fiber: {user_data.dietetics.diet.fiber}, "
+#         f"Saturated Fats: {user_data.dietetics.diet.saturated_fats}, "
+#         f"Sugars: {user_data.dietetics.diet.sugars}, "
+#         f"Today Meals: {', '.join(user_data.dietetics.diet.today_meals)}), "
+#         f"Social Indicators: (Marital Status: {user_data.dietetics.social_indicators.marital_status}, "
+#         f"Income: {user_data.dietetics.social_indicators.income}, "
+#         f"Access to Healthy Foods: {user_data.dietetics.social_indicators.access_to_healthy_foods}), "
+#         f"Physical Activity: {user_data.dietetics.physical_activity}, "
+#         f"Daily Activities: {', '.join(user_data.dietetics.daily_activities)}, "
+#         f"Activities Energy Consumption: {user_data.dietetics.activities_energy_consumption}, "
+#         f"Goals: (Reduce Weight: {user_data.dietetics.goals}, "
+#         f"Potential Diseases: (Type 2 Diabetes: {user_data.dietetics.potential_diseases}, "
+#     )
 
-    messages=[]
-    async for message in analyser.astream(input={formatted_data}):
-        messages.append(message)
-    return {"userdata": user_data, "question": question, "documents": documents,"diagnosis":'si',"generation":[AIMessage(content=" ".join(messages))], "sessionid": sessionid}
+#     messages=[]
+
+#     if nutritionRequired["nutrition"]=='yes':
+#         async for message in analyser.astream(input={formatted_data}):
+#             messages.append(message)
+#         return {"userdata": user_data, "diagnosis":[AIMessage(content=" ".join(messages))]}
+#     else:
+#         return {"diagnosis":[AIMessage(content="")]}
 
 
 
@@ -248,23 +259,33 @@ async def generate(state):
     print("---GENERATE---")
     question = state["question"]
     documents = state["documents"]
-    user_data = state["userdata"]
     sessionid= state["sessionid"]
-
-    # RAG generation
+    user_data=state["user_data"]
+    web_search=state["web_search"]
+    nutritionRequired=state["nutritionBranch"]
+    result=state["result"]
+    
     messages=[]	
     # RAG generation
-    async for message in generate.astream(
-    {"question": question, "context":documents, "user_data":user_data},
-    {"configurable": {"session_id": sessionid}},):
-        messages.append(message)
-    # generation = rag_chain.invoke({"context": documents, "question": question, "messages":chat_history.messages})
-    # chat_history.add_ai_message(generation)
-    # print(generation)
-    return {"documents": documents, "question": question, "generation": [AIMessage(content=" ".join(messages))], "sessionid":sessionid}
+    if web_search=="no" and nutritionRequired["nutrition"]=='yes':
+        async for message in generate.astream(
+        {"question": question, "context":documents, "user_data":user_data},
+        {"configurable": {"session_id": sessionid}},):
+            messages.append(message)
+
+        return {"generation": [AIMessage(content=" ".join(messages))]}
+    elif web_search=="yes" and nutritionRequired["nutrition"]=='yes':
+        async for message in generator.astream(
+        {"question": question, "context":result, "user_data":user_data},
+        {"configurable": {"session_id": sessionid}},):
+            messages.append(message)
+    else:
+        return {"generation": [AIMessage(content="")]}
 
 
-def grade_documents(state):
+
+
+async def grade_documents(state):
     """
     Determines whether the retrieved documents are relevant to the question.
 
@@ -276,29 +297,31 @@ def grade_documents(state):
     """
 
     print("---CHECK DOCUMENT RELEVANCE TO QUESTION---")
-    print(state)
     question = state["question"]
     documents = state["documents"]
-    sessionid= state["sessionid"]
-    user_data = state["userdata"]
+    nutritionRequired=state["nutritionBranch"]
 
     # Score each doc
     filtered_docs = []
-    web_search = "No"
-    for d in documents:
-        print(d)
-        score = retrieval_grader.invoke(
-            {"question": question, "document": d.page_content}
-        )
-        grade = score["score"]
-        if grade == "yes":
-            print("---GRADE: DOCUMENT RELEVANT---")
-            filtered_docs.append(d)
-        else:
-            print("---GRADE: DOCUMENT NOT RELEVANT---")
-            web_search = "Yes"
-            continue
-    return {"documents": filtered_docs, "question": question, "web_search": web_search, "sessionid": sessionid,"userdata": user_data}
+    web_search = "no"
+    if nutritionRequired["nutrition"]=='yes':
+        for d in documents:
+            print(d)
+            score = retrieval_grader.invoke(
+                {"question": question, "document": d.page_content}
+            )
+            grade = score["score"]
+            if grade == "yes":
+                print("---GRADE: DOCUMENT RELEVANT---")
+                filtered_docs.append(d)
+            if grade== "no":
+                print("---GRADE: DOCUMENT NOT RELEVANT---")
+                web_search = "yes"
+                break
+
+        return {"documents": filtered_docs, "web_search": web_search}
+    else:
+        return {"documents": [], "web_search": web_search}
 
 
 # def transform_query(state):
@@ -408,7 +431,7 @@ def _get_current_task(state):
         return len(state["results"]) + 1
     
 #Router
-def _route(state):
+def route(state):
     _step = _get_current_task(state)
     if _step is None:
         # We have executed all tasks
@@ -477,13 +500,9 @@ async def solve(state):
         prompt = solve_prompt.format(plan=plan, task=question)
 
         result = llm.invoke(prompt)
-        messages=[]	
-        async for message in generator.astream(
-        {"question": question, "context":result, "user_data":diagnosis},
-        {"configurable": {"session_id": sessionid}},):
-            messages.append(message)
+        
 
-        return {"result": result.content,"generation": [AIMessage(content=" ".join(messages))]}
+        return {"result": result.content}
     else:
         return {"plan_string": plan}
 

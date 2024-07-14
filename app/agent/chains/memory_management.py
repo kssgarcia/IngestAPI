@@ -1,10 +1,10 @@
-from .memory_setup import chroma_database_setUP
-from IngestAPI.app.agent.chains.memory_creator import memo_creator
-from summary import summary_chain
-documents_vectorestore, memory_collection, chat_collection, memory_chat_collection = chroma_database_setUP()
+from .memoryMethod.memory_setup import chroma_database_setUP
+from .memory_creator import memo_creator
+from .memoryMethod.summary import summary_chain
+memory_collection, chat_collection, memory_chat_collection = chroma_database_setUP()
 from datetime import datetime
 import uuid
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 local_llm="llama3"
 
@@ -114,5 +114,4 @@ def get_memories(question:str):
     if memory_results:
         lil_memo.append(memory_results)
     lil_memo=[AIMessage(content=content) for content in lil_memo]
-    return lil_memo
-get_memories("hay algo que me ayude a reducir mi peso?")  
+    return lil_memo 

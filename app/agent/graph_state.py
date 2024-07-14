@@ -24,11 +24,19 @@ class GraphState(TypedDict):
     generation: Annotated[list, add_messages]
     web_search: str
     documents: List[str]
-    userdata: dict = {}
+    # userdata: dict = {}
+    user_data:str=""
     nutritionBranch:str
     diagnosis:str='no'
     sessionid:str=''
     image=Image
+    #------------planner
+    plan_string: str
+    steps: List
+    results: dict
+    result: str
+    #----------memory
+    memoCreated:str='no'
 
 class Query(BaseModel):
     question: str

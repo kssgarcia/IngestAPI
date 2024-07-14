@@ -85,7 +85,7 @@ def generator(local_llm:str):
     
 
     # LLM
-    llm = ChatOllama(model=local_llm, temperature=0)
+    llm = ChatOllama(model=local_llm, temperature=0, num_ctx=8000)
 
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
@@ -121,10 +121,12 @@ promptGeneration = ChatPromptTemplate.from_messages(
     [
         (
             "system",
-            "You are a kind nutritionist for question-answering tasks. you always have to talk to your patients through messages. You must avoid mading things up. whenever you are not sure, just say 'I don't know'.",
+            "You are a kind nutritionist for question-answering tasks, your patients know your role so you don't have to mention it every time. you always have to talk to your patients through messages. You must avoid mading things up. whenever you are not sure, just say 'I don't know'. You'll find some previous interactions you have had with the patient (you should use them y your memory in case you need info from the past to answer what you are asked):",
         ),
         MessagesPlaceholder(variable_name="messages"),
-        ("human", "{question}")
+        ("human", "{question}"),
+        ("system", "these are some data you know from your patient, use it to complement your answer in case they are privided or relevant"),
+        MessagesPlaceholder(variable_name="memories")
         
     ]
 )
@@ -134,7 +136,7 @@ promptGeneration = ChatPromptTemplate.from_messages(
 def commonGenerator(local_llm:str):
 
     # LLM
-    llm = ChatOllama(model=local_llm, temperature=0)
+    llm = ChatOllama(model=local_llm, temperature=0, num_ctx=8000)
 
     # Chain
     rag_common_chain = promptGeneration | llm | StrOutputParser()

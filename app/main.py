@@ -10,10 +10,14 @@ from fastapi.responses import StreamingResponse
 import io
 import logging
 import os
+
 from utils.mongo_client import get_mongo_client
 from utils.embedding import perform_vector_search
-from dotenv import load_dotenv
 from utils.modelsHandler import predict
+from utils.data_formater import formatter
+
+from dotenv import load_dotenv
+
 import json
 
 from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
@@ -28,6 +32,12 @@ from pprint import pprint
 #imagetotext
 import ollama
 from ollama import generate
+
+#data analysis chain
+from agent.chains.analyser import analyser
+local_llm="llama3"
+analyser=analyser(local_llm=local_llm)
+
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
 
@@ -214,27 +224,18 @@ class InputData(BaseModel):
 # ConnectionManager para gestionar sesiones
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[WebSocket, str] = {}
-        self.user_sessions: Dict[str, List[str]] = {}
+        self.active_connections: List[WebSocket] = []
+        self.session_map: Dict[WebSocket, str] = {}
 
     async def connect(self, websocket: WebSocket, session_id: str):
-        self.active_connections[websocket] = session_id
-        email = self._get_email_from_session_id(session_id)
-        if email not in self.user_sessions:
-            self.user_sessions[email] = []
-        self.user_sessions[email].append(session_id)
+        await websocket.accept()
+        self.active_connections.append(websocket)
+        self.session_map[websocket] = session_id
 
     def disconnect(self, websocket: WebSocket):
-        session_id = self.active_connections.pop(websocket, None)
-        if session_id:
-            email = self._get_email_from_session_id(session_id)
-            if email in self.user_sessions:
-                self.user_sessions[email].remove(session_id)
-                if not self.user_sessions[email]:
-                    del self.user_sessions[email]
-
-    def _get_email_from_session_id(self, session_id: str) -> str:
-        return session_id.split('-')[0]
+        self.active_connections.remove(websocket)
+        if websocket in self.session_map:
+            del self.session_map[websocket]
 
     async def send_personal_message(self, message: str, websocket: WebSocket):
         await websocket.send_text(message)
@@ -245,9 +246,9 @@ class ConnectionManager:
 
 manager = ConnectionManager()
 
-async def generate_response(websocket: WebSocket, data: InputData, userData: UserData, session_id: str):
+async def generate_response(websocket: WebSocket, data: InputData, session_id: str, user_data:str):
     try:
-        inputs = {"question": data.message, "sessionid": session_id, "userdata": userData}
+        inputs = {"question": data.message, "sessionid": session_id, "user_data":user_data}
         response_data = []
         async for event in langgraph_app.astream_events(inputs, version="v2"):
             kind= event["event"]
@@ -263,42 +264,79 @@ async def generate_response(websocket: WebSocket, data: InputData, userData: Use
 
 @app.websocket("/ws/langgraph/agent/")
 async def websocket_endpoint(websocket: WebSocket):
-    logger.info("Before accepting the connection")
-    await websocket.accept()
-    logger.info("Connection accepted")
     try:
+        # Recibir el primer mensaje que contiene el userData
         initial_data = await websocket.receive_json()
-        logger.info(f"Initial data received: {initial_data}")
-
+        
+        # Generar session_id basado en userData
         user_data = initial_data.get("userData", {})
         email = user_data.get("email", "")
-        logger.info(f"got email: {user_data}")
-
+        
         if email:
-            email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()
-            session_id = f"{email_hash}-{uuid.uuid4()}"
+            # Generar un hash del email para usarlo como session_id
+            session_id = hashlib.sha256(email.encode('utf-8')).hexdigest()
         else:
+            # Generar un UUID si no hay email
             session_id = str(uuid.uuid4())
-        logger.info(f"Got: {session_id}")
-
+        #data_analyser
+        formated_data=formatter(user_data=user_data)
+        analysis=analyser.invoke(input={formated_data})
         await manager.connect(websocket, session_id)
-        logger.info("Manager connected")
-
-        user_data_model = UserData(**user_data)
-        logger.info("User data model created")
-
+        
         while True:
             data = await websocket.receive_json()
-            logger.info("Message received")
+            print(data["message"])
             message = InputData(message=data["message"])
-            await generate_response(websocket, message, user_data_model, session_id)
-            logger.info(f"Response sent for message: {data['message']}")
+            await websocket.send_text(f"Received message: {message.message}")
+            # user_data_model = UserData(**user_data)
+            await generate_response(websocket, message, user_data=analysis)
+            # await websocket.send_text(f"Received message: {message.message}")
+            # await websocket.send_text(f"Received user data: {user_data_model.email}")
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         logger.info("WebSocket disconnected")
     except Exception as e:
         logger.error(f"Error receiving initial data: {str(e)}")
         await websocket.send_text(f"Error receiving initial data: {str(e)}")
+
+# @app.websocket("/ws/langgraph/agent/")
+# async def websocket_endpoint(websocket: WebSocket):
+#     logger.info("Before accepting the connection")
+#     await websocket.accept()
+#     logger.info("Connection accepted")
+#     try:
+#         initial_data = await websocket.receive_json()
+#         logger.info(f"Initial data received: {initial_data}")
+
+#         user_data = initial_data.get("userData", {})
+#         email = user_data.get("email", "")
+#         logger.info(f"got email: {user_data}")
+
+#         if email:
+#             email_hash = hashlib.sha256(email.encode('utf-8')).hexdigest()
+#             session_id = f"{email_hash}-{uuid.uuid4()}"
+#         else:
+#             session_id = str(uuid.uuid4())
+#         logger.info(f"Got: {session_id}")
+
+#         await manager.connect(websocket, session_id)
+#         logger.info("Manager connected")
+
+#         user_data_model = UserData(**user_data)
+#         logger.info("User data model created")
+
+#         while True:
+#             data = await websocket.receive_json()
+#             logger.info("Message received")
+#             message = InputData(message=data["message"])
+#             await generate_response(websocket, message, user_data_model, session_id)
+#             logger.info(f"Response sent for message: {data['message']}")
+#     except WebSocketDisconnect:
+#         manager.disconnect(websocket)
+#         logger.info("WebSocket disconnected")
+#     except Exception as e:
+#         logger.error(f"Error receiving initial data: {str(e)}")
+#         await websocket.send_text(f"Error receiving initial data: {str(e)}")
 
 @app.get("/user/sessions/{email}")
 async def get_user_sessions(email: str):
