@@ -282,21 +282,17 @@ async def generate_response(websocket: WebSocket, data: InputData, session_id: s
         response_data = []
         async for event in langgraph_app.astream_events(input=inputs, version="v2"):
             kind = event["event"]
-            print(kind)
             tags = event.get("tags", [])
-            print(tags)
-            if kind == "on_chat_model_stream":
-                data = event["data"]["chunk"].cotent
-
-                # print(data)
-                # if "generation" in data.keys():
-                #     # Empty content in the context of OpenAI or Anthropic usually means
-                #     # that the model is asking for a tool to be invoked.
-                #     # So we only print non-empty content
-                #     print(data["generation"][0].content, end="")
-                # if "generation" in data.keys() and data["generation"][0].content not in response_data:
-                #     response_data.append(data["generation"][0].content)
-                #     await manager.send_personal_message("".join(response_data), websocket)
+            if kind == "on_chat_model_stream" and "tool_llm" in tags:
+                data = event["data"]["chunk"].content
+                if data:
+                    # Empty content in the context of OpenAI or Anthropic usually means
+                    # that the model is asking for a tool to be invoked.
+                    # So we only print non-empty content
+                    print(data, end="")
+                if data not in response_data:
+                    response_data.append(data)
+                    await manager.send_personal_message("".join(response_data), websocket)
         await manager.send_personal_message("END_OF_RESPONSE", websocket)
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")

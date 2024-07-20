@@ -158,4 +158,4 @@ def commonGenerator(local_llm:str, llm:ChatOllama):
     # Run with message history and summarisation
     
     
-    return rag_common_chain
+    return generate_with_common_message_history

@@ -11,8 +11,6 @@ uvicorn
 pydantic
 pymongo
 motor
-openai
-ultralytics
 httpx
 
 langchain
@@ -32,3 +30,4 @@ markdown
 
 chromadb
 sentence-transformers
+unstructured

@@ -56,12 +56,12 @@ llm = ChatOllama(model="llama3", temperature=0)
 llm_json= ChatOllama(model="llama3", temperature=0, num_gpu=0, format="json")
 
 
-#Document loader
-docuemt=document_loader(filename="TEMASDENUTRICINBSICABook.md")
-#splitter
-all_splits=text_splitter(docuemt)
-#Embedding and vector store
-vectorstore = store_and_retrieve(all_splits)
+# #Document loader
+# docuemt=document_loader(filename="TEMASDENUTRICINBSICABook.md")
+# #splitter
+# all_splits=text_splitter(docuemt)
+# #Embedding and vector store
+# vectorstore = store_and_retrieve(all_splits)
 
 
 
@@ -97,9 +97,10 @@ def inicialize(state):
     """     
     Initializes the state of the document
     """
+    print("----------INITIALIZE")
     return {"question":question, "sessionid":sessionid, "user_data":user_data, "nutritionBranch":nutritionRequired, "documents":documents}
 
-async def branch(state, config: RunnableConfig):
+async def branch(state):
     """
     Decides wether documents are needed or not based on the question
 
@@ -115,7 +116,7 @@ async def branch(state, config: RunnableConfig):
     sessionid= state["sessionid"]
     diagnosis=state["diagnosis"]
     user_data=state["user_data"]
-    required = await branchDecider.ainvoke({"sentence":question}, config=RunnableConfig)
+    required = await branchDecider.ainvoke({"sentence":question})
     return {"question":question, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis, "user_data":user_data}
 
 async def nutritionRequired(state):
@@ -142,7 +143,7 @@ async def nutritionRequired(state):
         print("---NUTRITION REQUIRED---")
         return "retrieve"
 
-async def generateCommon(state, config:RunnableConfig):
+async def generateCommon(state):
     """
     Generate common answers to the question
 
@@ -155,7 +156,6 @@ async def generateCommon(state, config:RunnableConfig):
     question = state["question"]
     sessionid= state["sessionid"]
     user_data=state["user_data"]
-    message=HumanMessage(content=[],)
     # messages = []
 
     chat_message_history = MongoDBChatMessageHistory(
@@ -170,7 +170,7 @@ async def generateCommon(state, config:RunnableConfig):
     memories=get_memories(question=question)
     memories.append(user_data)
     print("---GENERATE COMMON---")
-    messages=await commonGenerator.ainvoke(input={"question":question,"messages":chat_message_history.messages[-1:-3], "memories":memories}, config=RunnableConfig)
+    messages=await commonGenerator.ainvoke(input={"question":question,"messages":chat_message_history.messages[-1:-3], "memories":memories}, config={"configurable": {"session_id": sessionid}})
         # messages.append(message.content)
     print(messages)
     return { "generation":[AIMessage(content="".join(messages))]}
@@ -178,7 +178,7 @@ async def generateCommon(state, config:RunnableConfig):
 
 
 
-async def retrieve(state, config:RunnableConfig):
+async def retrieve(state):
     """
     Retrieve documents
 
@@ -195,7 +195,7 @@ async def retrieve(state, config:RunnableConfig):
 
     # Retrieval
     # if nutritionRequired["nutrition"]=='yes':
-    documents = await retriever.ainvoke(question, config=config)
+    documents = await retriever.ainvoke(question)
     return {"documents": documents}
 
 
@@ -255,7 +255,7 @@ async def retrieve(state, config:RunnableConfig):
 
 
 
-async def generate(state, config:RunnableConfig):
+async def generate(state):
     """
     Generate answer
 
@@ -278,15 +278,15 @@ async def generate(state, config:RunnableConfig):
     # RAG generation
     if web_search=="no" and nutritionRequired["nutrition"]=='yes':
         messages=await generate.ainvoke(
-        {"question": question, "context":documents, "user_data":user_data},
-        config=config,)
+        {"question": question, "context":documents, "user_data":user_data},config={"configurable": {"session_id": sessionid}}
+        )
             # messages.append(message)
 
         return {"generation": [AIMessage(content=" ".join(messages))]}
     elif web_search=="yes" and nutritionRequired["nutrition"]=='yes':
         messages=await generator.ainvoke(
-        {"question": question, "context":result, "user_data":user_data},
-        config=config,)
+        {"question": question, "context":result, "user_data":user_data},config={"configurable": {"session_id": sessionid}}
+        )
             # messages.append(message)
     else:
         return {"generation": [AIMessage(content="")]}
@@ -309,11 +309,13 @@ async def grade_documents(state):
     question = state["question"]
     documents = state["documents"]
     nutritionRequired=state["nutritionBranch"]
-    llm.format="json"
+
     # Score each doc
     filtered_docs = []
     web_search = "no"
+    print(nutritionRequired)
     if nutritionRequired["nutrition"]=='yes':
+        print("empeznado")
         for d in documents:
             print(d)
             score = await retrieval_grader.ainvoke(
@@ -400,8 +402,9 @@ def decide_to_generate(state):
     print(state)
     web_search = state["web_search"]
 
-
+    print("podria ser aqui")
     if web_search == "Yes":
+
         # All documents have been filtered check_relevance
         # We will re-generate a new query
         print(
@@ -416,7 +419,11 @@ def decide_to_generate(state):
 
 #planner
 async def get_plan(state):
-    if state["web_search"]=="yes":
+    print("**********llegamos a plan")
+    nutritionRequired= state["nutritionBranch"]
+    print(nutritionRequired)
+    if nutritionRequired["nutrition"]=="yes":
+        print("empezando plan")
         task = state["question"]
         result = await planner.ainvoke({"task": task})
         print(result)
@@ -449,10 +456,11 @@ def route(state):
 
 # execute tools
 async def tool_execution(state, config:RunnableConfig):
-    web_search=state['web_search']
     nutritionRequired=state['nutritionBranch']
+    print(nutritionRequired)
     """Worker node that executes the tools of a given plan."""
-    if web_search=="yes" and nutritionRequired["nutrition"]=='yes':
+    if nutritionRequired["nutrition"]=='yes':
+        print("empezando tool")
         _step = _get_current_task(state)
         print(_step)
         print(state["steps"])
@@ -486,13 +494,12 @@ async def solve(state):
     """
     print("---Solver---")
     question = state["question"]
-    web_search=state["web_search"]
 
     nutritionRequired=state["nutritionBranch"]
 
     plan = ""
-    
-    if web_search=="yes" and nutritionRequired["nutrition"]=='yes' and state["steps"]!=[]:
+    print("puede ser por aca")
+    if nutritionRequired["nutrition"]=='yes' and state["steps"]!=[]:
         print("-------------Resolver-------------------")
         for _plan, step_name, tool, tool_input in state["steps"]:
             _results = state["results"] or {}
