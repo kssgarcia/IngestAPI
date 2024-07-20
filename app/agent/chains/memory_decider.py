@@ -48,9 +48,8 @@ memory_decider_prompt = PromptTemplate(
     )
 
 
-def memo_decider(local_llm:str, memory_decider_prompt:PromptTemplate=memory_decider_prompt):
-    #llm
-    llm = ChatOllama(model=local_llm, temperature=0, format="json")
+def memo_decider(local_llm:str, llm_json:ChatOllama, memory_decider_prompt:PromptTemplate=memory_decider_prompt):
+
     #memory decider
-    memory_decider=memory_decider_prompt|llm | JsonOutputParser()
+    memory_decider=memory_decider_prompt|llm_json | JsonOutputParser()
     return memory_decider

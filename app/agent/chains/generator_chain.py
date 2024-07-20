@@ -14,26 +14,24 @@ from langchain_mongodb.chat_message_histories import MongoDBChatMessageHistory
 load_dotenv()
 MONGO_USERNAME = os.getenv("MONGO_USERNAME")
 MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
-MONGO_URI = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-
-# LLM
-llm = ChatOllama(model="llama3", temperature=0, num_gpu=1)
+MONGO_URI = f"mongodb+srv://Yilberu:bnnjgIKAm2WzEwd2@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 
-# from .memoryMethod.summary import summarize_messages
-summarization_prompt = ChatPromptTemplate.from_messages(
-        [
-            MessagesPlaceholder(variable_name="chat_history"),
-            (
-                "user",
-                "Distill the above chat messages into a single summary message. Include as many specific details as you can. keep the names and the data of the user intact.",
-            ),
-        ]
-    )
+
+# # from .memoryMethod.summary import summarize_messages
+# summarization_prompt = ChatPromptTemplate.from_messages(
+#         [
+#             MessagesPlaceholder(variable_name="chat_history"),
+#             (
+#                 "user",
+#                 "Distill the above chat messages into a single summary message. Include as many specific details as you can. keep the names and the data of the user intact.",
+#             ),
+#         ]
+#     )
 
 
-#summary chain
-summary_chain = summarization_prompt | llm
+# #summary chain
+# summary_chain = summarization_prompt | llm
 
 #Prompt
 prompt = ChatPromptTemplate.from_messages(
@@ -50,26 +48,26 @@ prompt = ChatPromptTemplate.from_messages(
 
 
 
-def get_session_history(session_id):
-    # Usando SQLite como ejemplo de base de datos
-    return SQLChatMessageHistory(session_id, "sqlite:///memory.db")
+# def get_session_history(session_id):
+#     # Usando SQLite como ejemplo de base de datos
+#     return SQLChatMessageHistory(session_id, "sqlite:///memory.db")
 
     # Run with message history and summarisation
-def summarize_messages(sessionid=""):
-        print(sessionid)
-        stored_messages = get_session_history(session_id=sessionid).messages
-        print(stored_messages)
-        if len(stored_messages) <= 8:
-            print("no sumarisation")
-            return False
-        print(len(stored_messages))
+# def summarize_messages(sessionid=""):
+#         print(sessionid)
+#         stored_messages = get_session_history(session_id=sessionid).messages
+#         print(stored_messages)
+#         if len(stored_messages) <= 8:
+#             print("no sumarisation")
+#             return False
+#         print(len(stored_messages))
         
-        summary_message = summary_chain.invoke({"chat_history": stored_messages})
-        stored_messages.clear()
+#         summary_message = summary_chain.invoke({"chat_history": stored_messages})
+#         stored_messages.clear()
         
-        stored_messages.add_message(summary_message)
+#         stored_messages.add_message(summary_message)
 
-        return True
+#         return True
 
 
 # Post-processing
@@ -81,11 +79,11 @@ def format_docs(docs):
 
 
 #Generator
-def generator(local_llm:str):
+def generator(local_llm:str, llm:ChatOllama):
     
 
-    # LLM
-    llm = ChatOllama(model=local_llm, temperature=0, num_ctx=8000)
+    # # LLM
+    llm.format=None
 
     # Chain
     rag_chain = prompt | llm | StrOutputParser()
@@ -104,10 +102,10 @@ def generator(local_llm:str):
         history_messages_key="messages",
     )
 
-    generate_with_summarization = (
-        RunnablePassthrough.assign(messages_summarized=summarize_messages)
-        | generate_with_message_history
-    )
+    # generate_with_summarization = (
+    #     RunnablePassthrough.assign(messages_summarized=summarize_messages)
+    #     | generate_with_message_history
+    # )
 
     return generate_with_message_history
 
@@ -118,31 +116,32 @@ def generator(local_llm:str):
 
 # Prompt
 promptGeneration = ChatPromptTemplate.from_messages(
+    
     [
         (
             "system",
-            "You are a kind nutritionist for question-answering tasks, your patients know your role so you don't have to mention it every time. you always have to talk to your patients through messages. You must avoid mading things up. whenever you are not sure, just say 'I don't know'. You'll find some previous interactions you have had with the patient (you should use them y your memory in case you need info from the past to answer what you are asked):",
+            "You are a kind nutritionist for question-answering tasks. your response should be in json format('answer': 'your answer here'). the user knows what your role is so you don't have to say it in every message, maybe only in first interaction, when the user greets you. You always have to talk to your patients through messages. You must avoid mading things up. whenever you are not sure, just say 'I don't know'. if the name of the patient is available use it always. there are some user data info you know about your patient above. You'll find previous messages below, result of the interactions you had with your patientce, use them to complement your answer in case you need it to answer the patients question. \n this is the question you gotta answer: {question}. \n these are some interactions you had with your patient:\n",
         ),
         MessagesPlaceholder(variable_name="messages"),
+        MessagesPlaceholder(variable_name="memories"),
         ("human", "{question}"),
-        ("system", "these are some data you know from your patient, use it to complement your answer in case they are privided or relevant"),
-        MessagesPlaceholder(variable_name="memories")
-        
     ]
 )
 
 
 #commonGenerator
-def commonGenerator(local_llm:str):
+def commonGenerator(local_llm:str, llm:ChatOllama):
 
     # LLM
-    llm = ChatOllama(model=local_llm, temperature=0, num_ctx=8000)
-
+    # llm.format=None
     # Chain
-    rag_common_chain = promptGeneration | llm | StrOutputParser()
+    rag_common_chain = promptGeneration | llm.with_config({
+            "run_name": "Get Items LLM",
+            "tags": ["tool_llm"],  # <-- Propagate callbacks (Python <= 3.10)
+        }) | StrOutputParser()
 
-    #summary chain
-    summary_chain = summarization_prompt | llm
+    # #summary chain
+    # summary_chain = summarization_prompt | llm
 
     # Run only with message histoy chain
     generate_with_common_message_history = RunnableWithMessageHistory(
@@ -158,10 +157,5 @@ def commonGenerator(local_llm:str):
 
     # Run with message history and summarisation
     
-
-    generate_common = (
-        RunnablePassthrough.assign(messages_summarized=summarize_messages)
-        | generate_with_common_message_history
-    )
     
     return generate_with_common_message_history

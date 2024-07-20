@@ -13,12 +13,8 @@ analysis = PromptTemplate(
     input_variables=["sentence"],
 )
 
-def branchDecider(local_llm:str, analysis:PromptTemplate=analysis):
-    # LLM
-
-    llm = ChatOllama(model=local_llm, temperature=0, format='json')
-
-
-    decider = analysis | llm | JsonOutputParser()
+def branchDecider(local_llm:str, llm_json:ChatOllama, analysis:PromptTemplate=analysis, ):
+    llm_json.format="json"
+    decider = analysis | llm_json | JsonOutputParser()
 
     return decider

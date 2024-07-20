@@ -20,7 +20,7 @@ MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
 
 
 # Obtener la cadena de conexión desde una variable de entorno
-mongo_uri = f"mongodb+srv://{MONGO_USERNAME}:{MONGO_PASSWORD}@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+mongo_uri = f"mongodb+srv://Yilberu:bnnjgIKAm2WzEwd2@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
 #state
 from .graph_state import GraphState, Query
@@ -51,7 +51,9 @@ Task: {task}
 Response:"""
 
 local_llm="llama3"
-
+local_llm2="phi3:mini"
+llm = ChatOllama(model="llama3", temperature=0)
+llm_json= ChatOllama(model="llama3", temperature=0, num_gpu=0, format="json")
 
 
 #Document loader
@@ -61,21 +63,29 @@ all_splits=text_splitter(docuemt)
 #Embedding and vector store
 vectorstore = store_and_retrieve(all_splits)
 
+
+
+
 #tools
 web_search_tool = TavilySearchAPIRetriever(k=3)
 retriever=document_vector_store()
 retriever=retriever.as_retriever(search_type="mmr", search_kwargs={"k": 3})
 
 #Chains
-generator=generator(local_llm=local_llm)
-retrieval_grader=retrieval_grader(local_llm=local_llm)
-question_rewriter=rewriter(local_llm=local_llm)
-analyser=analyser(local_llm=local_llm)
-branchDecider=branchDecider(local_llm=local_llm)
-commonGenerator=commonGenerator(local_llm=local_llm,)
-planner=plannerchain(local_llm=local_llm)
+generator=generator(local_llm=local_llm, llm=llm)
+retrieval_grader=retrieval_grader(local_llm=local_llm, llm_json=llm_json)
+# question_rewriter=rewriter(local_llm=local_llm)
+analyser=analyser(local_llm=local_llm, llm=llm)
 
-memo_decider=memo_decider(local_llm=local_llm)
+#analyser
+def set_analyser(analyser=analyser):
+    return analyser
+
+branchDecider=branchDecider(local_llm=local_llm, llm_json=llm_json)
+commonGenerator=commonGenerator(local_llm=local_llm,llm=llm)
+planner=plannerchain(local_llm=local_llm,llm=llm)
+
+memo_decider=memo_decider(local_llm=local_llm, llm_json=llm_json)
 
 
 def inicialize(state):
@@ -105,12 +115,10 @@ async def branch(state):
     sessionid= state["sessionid"]
     diagnosis=state["diagnosis"]
     user_data=state["user_data"]
-
-
-    required = branchDecider.invoke({"sentence":question})
+    required = await branchDecider.ainvoke({"sentence":question})
     return {"question":question, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis, "user_data":user_data}
 
-def nutritionRequired(state):
+async def nutritionRequired(state):
     """
     Decides whether the given question requires nutritional information
 
@@ -145,11 +153,10 @@ async def generateCommon(state):
     state(dict): The updated graph state with a new generation key
     """
     question = state["question"]
-    required=state["nutritionBranch"]
     sessionid= state["sessionid"]
     user_data=state["user_data"]
     message=HumanMessage(content=[],)
-    messages = []
+    # messages = []
 
     chat_message_history = MongoDBChatMessageHistory(
     session_id=sessionid,
@@ -157,14 +164,16 @@ async def generateCommon(state):
     database_name="snapeatdb",
     collection_name="chatHistories",
     )
+    print(chat_message_history.messages[-1:-3])
     
     # if required["nutrition"]=='no':
     memories=get_memories(question=question)
     memories.append(user_data)
     print("---GENERATE COMMON---")
-    async for message in commonGenerator.astream(input={"question":question, "messages":chat_message_history.messages[-1:-3], "memories":memories}, config={"configurable": {"session_id": sessionid}}):
-        messages.append(message)
-    return { "generation":[AIMessage(content=" ".join(messages))]}
+    messages=await commonGenerator.ainvoke(input={"question":question,"messages":chat_message_history.messages[-1:-3], "memories":memories}, config={"configurable": {"session_id": sessionid}})
+        # messages.append(message.content)
+    print(messages)
+    return { "generation":[AIMessage(content="".join(messages))]}
 
 
 
@@ -186,7 +195,7 @@ async def retrieve(state):
 
     # Retrieval
     # if nutritionRequired["nutrition"]=='yes':
-    documents = retriever.invoke(question)
+    documents = await retriever.ainvoke(question)
     return {"documents": documents}
 
 
@@ -268,17 +277,17 @@ async def generate(state):
     messages=[]	
     # RAG generation
     if web_search=="no" and nutritionRequired["nutrition"]=='yes':
-        async for message in generate.astream(
+        messages=await generate.ainvoke(
         {"question": question, "context":documents, "user_data":user_data},
-        {"configurable": {"session_id": sessionid}},):
-            messages.append(message)
+        {"configurable": {"session_id": sessionid}},)
+            # messages.append(message)
 
         return {"generation": [AIMessage(content=" ".join(messages))]}
     elif web_search=="yes" and nutritionRequired["nutrition"]=='yes':
-        async for message in generator.astream(
+        messages=await generator.ainvoke(
         {"question": question, "context":result, "user_data":user_data},
-        {"configurable": {"session_id": sessionid}},):
-            messages.append(message)
+        {"configurable": {"session_id": sessionid}},)
+            # messages.append(message)
     else:
         return {"generation": [AIMessage(content="")]}
 
@@ -300,14 +309,14 @@ async def grade_documents(state):
     question = state["question"]
     documents = state["documents"]
     nutritionRequired=state["nutritionBranch"]
-
+    llm.format="json"
     # Score each doc
     filtered_docs = []
     web_search = "no"
     if nutritionRequired["nutrition"]=='yes':
         for d in documents:
             print(d)
-            score = retrieval_grader.invoke(
+            score = await retrieval_grader.ainvoke(
                 {"question": question, "document": d.page_content}
             )
             grade = score["score"]
@@ -389,10 +398,8 @@ def decide_to_generate(state):
 
     print("---ASSESS GRADED DOCUMENTS---")
     print(state)
-    question = state["question"]
     web_search = state["web_search"]
-    filtered_documents = state["documents"]
-    sessionid=state["sessionid"]
+
 
     if web_search == "Yes":
         # All documents have been filtered check_relevance
@@ -408,10 +415,10 @@ def decide_to_generate(state):
     
 
 #planner
-def get_plan(state):
+async def get_plan(state):
     if state["web_search"]=="yes":
         task = state["question"]
-        result = planner.invoke({"task": task})
+        result = await planner.ainvoke({"task": task})
         print(result)
         # Find all matches in the sample text
         matches = re.findall(regex_pattern, result.content)
@@ -441,7 +448,7 @@ def route(state):
         return "tool"
 
 # execute tools
-def tool_execution(state):
+async def tool_execution(state):
     web_search=state['web_search']
     nutritionRequired=state['nutritionBranch']
     """Worker node that executes the tools of a given plan."""
@@ -455,10 +462,10 @@ def tool_execution(state):
             tool_input = tool_input.replace(k, v)
         if tool == "Google":
             print("Google")
-            result = web_search.invoke(tool_input)
+            result = await web_search.ainvoke(tool_input)
         elif tool == "LLM":
             print("LLM")
-            result = llm.invoke(tool_input)
+            result = await llm.ainvoke(tool_input)
         else:
             raise ValueError
         _results[step_name] = str(result)
@@ -479,12 +486,8 @@ async def solve(state):
     """
     print("---Solver---")
     question = state["question"]
-    documents = state["documents"]
-    diagnosis= state["diagnosis"]
     web_search=state["web_search"]
-    user_data = state["userdata"]
-    sessionid= state["sessionid"]
-    image=state["image_file"]
+
     nutritionRequired=state["nutritionBranch"]
 
     plan = ""
@@ -499,7 +502,7 @@ async def solve(state):
             plan += f"Plan: {_plan}\n{step_name} = {tool}[{tool_input}]"
         prompt = solve_prompt.format(plan=plan, task=question)
 
-        result = llm.invoke(prompt)
+        result = await llm.ainvoke(prompt)
         
 
         return {"result": result.content}
@@ -518,11 +521,7 @@ async def recent_messages_add(state):
     chat_vectorstore updated with recent messages
     """
     question = state["question"]
-    userdata= state["userdata"]
-    required=state["nutritionBranch"]
-    diagnosis = state["diagnosis"]
     sessionid= state["sessionid"]
-    image=state["image_file"]   
 
     chat_message_history = MongoDBChatMessageHistory(
     session_id=sessionid,
@@ -531,7 +530,7 @@ async def recent_messages_add(state):
     collection_name="chatHistories",
     )
 
-    decision=memo_decider.invoke(input={"patient_message":question})
+    decision=await memo_decider.ainvoke(input={"patient_message":question})
     if decision["valuableinfo"]=='yes':
         add_lil_memo(question)
     

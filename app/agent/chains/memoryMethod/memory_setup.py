@@ -9,7 +9,7 @@ from langchain_community.embeddings.sentence_transformer import (
 )
 
 #Embedding function
-embedding_function= SentenceTransformerEmbeddings(model_name="intfloat/multilingual-e5-large", model_kwargs = {'device': 'cuda'})
+embedding_function= SentenceTransformerEmbeddings(model_name="intfloat/multilingual-e5-large")
 
 def chroma_database_setUP():
 

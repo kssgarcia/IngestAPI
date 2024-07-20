@@ -16,8 +16,7 @@ prompt = PromptTemplate(
     input_variables=["question", "document"],
 )
 #Retrieval grader
-def retrieval_grader(local_llm:str):
-    llm= ChatOllama(model=local_llm, format='json', temperature=0)
+def retrieval_grader(local_llm:str, llm_json:ChatOllama):
 
-    retrieval_grader = prompt | llm | JsonOutputParser()
+    retrieval_grader = prompt | llm_json | JsonOutputParser()
     return retrieval_grader

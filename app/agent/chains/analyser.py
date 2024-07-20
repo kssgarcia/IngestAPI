@@ -14,8 +14,8 @@ analysis = PromptTemplate(
     input_variables=["data"],
 )
 # LLM
-def analyser(local_llm:str, analysis:PromptTemplate=analysis):
-    llm = ChatOllama(model=local_llm, temperature=0, num_ctx=8000)
+def analyser(local_llm:str, llm:ChatOllama, analysis:PromptTemplate=analysis):
+    # llm = ChatOllama(model=local_llm, temperature=0, num_ctx=8000)
 
     analyser = analysis | llm | StrOutputParser()
 

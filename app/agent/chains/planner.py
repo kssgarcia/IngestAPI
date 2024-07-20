@@ -23,7 +23,7 @@ Task: {task}
 
 prompt_template = ChatPromptTemplate.from_messages([("user", prompt)])
 
-def plannerchain(local_llm:str,prompt_template:ChatPromptTemplate=prompt_template):
-    llm = ChatOllama(model=local_llm, temperature=0, num_ctx=4000)
+def plannerchain(local_llm:str,llm:ChatOllama,prompt_template:ChatPromptTemplate=prompt_template):
+    # llm = ChatOllama(model=local_llm, temperature=0, num_ctx=4000)
     planner = prompt_template | llm
     return planner

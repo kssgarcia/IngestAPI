@@ -2,7 +2,7 @@ from pathlib import Path
 from torchvision.transforms.functional import crop
 from torchvision import transforms
 from PIL import Image
-from ultralytics import YOLO
+from ultralytics import YOLO 
 from pydantic import BaseModel, EmailStr
 from typing import List,Optional, Dict
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, WebSocket, WebSocketDisconnect
@@ -26,17 +26,21 @@ import uuid
 from fastapi.responses import JSONResponse
 
 #agent utils
-from agent import graph_workflow_app
+from agent.graph_workflow_app import setup_lang_app
 from pprint import pprint
 
 #imagetotext
-import ollama
-from ollama import generate
+# import ollama
+# from ollama import generate
+from langchain_community.chat_models import ChatOllama
+#llm
+
 
 #data analysis chain
 from agent.chains.analyser import analyser
-local_llm="llama3"
-analyser=analyser(local_llm=local_llm)
+from agent.flow_state import set_analyser
+# llm = ChatOllama(model="llama3", temperature=0)
+analyser=set_analyser()
 
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
@@ -160,10 +164,18 @@ async def vector_search(req: VectorSearchRequest):
 
 
 # Agent Endponit
-langgraph_app = graph_workflow_app.setup_lang_app()
+langgraph_app = setup_lang_app()
 
 # User data model 
-
+class activities(BaseModel):
+    _id: str
+    duration: int
+    name: str
+    MET:float
+class DailyActivity(BaseModel):
+    date: str
+    activities: List[activities]
+         
 class Anthropometry(BaseModel):
     height: Optional[float] = 0.0
     weight: Optional[float] = 0.0
@@ -185,7 +197,7 @@ class Diet(BaseModel):
 class SocialIndicators(BaseModel):
     marital_status: Optional[str] = ""
     income: Optional[str] = ""
-    access_to_healthy_foods: Optional[bool] = False
+    access_to_healthy_foods: Optional[str] = ""
 
 class Goals(BaseModel):
     Goals: Optional[List[str]] = []
@@ -202,7 +214,7 @@ class Dietetics(BaseModel):
     diet: Optional[Diet] = Diet()
     social_indicators: Optional[SocialIndicators] = SocialIndicators()
     physical_activity: Optional[List[str]] = []
-    daily_activities: Optional[List[str]] = []
+    daily_activities: Optional[List[DailyActivity]] = []
     activities_energy_consumption: Optional[int] = 0
     goals: Optional[List[str]] =[]
     potential_diseases: Optional[List[str]] =[]
@@ -228,7 +240,6 @@ class ConnectionManager:
         self.session_map: Dict[WebSocket, str] = {}
 
     async def connect(self, websocket: WebSocket, session_id: str):
-        await websocket.accept()
         self.active_connections.append(websocket)
         self.session_map[websocket] = session_id
 
@@ -250,12 +261,22 @@ async def generate_response(websocket: WebSocket, data: InputData, session_id: s
     try:
         inputs = {"question": data.message, "sessionid": session_id, "user_data":user_data}
         response_data = []
-        async for event in langgraph_app.astream_events(inputs, version="v2"):
-            kind= event["event"]
-            if kind == "on_chat_model_stream":
-                data= event["data"]["chunk"].content
-                if data:
-                    response_data.append(data)
+        async for event in langgraph_app.astream_events(input=inputs, version="v2"):
+            kind = event["event"]
+            print(kind)
+            tags = event.get("tags", [])
+            print(tags)
+            if kind == "on_chain_stream":
+                data = event["data"]["chunk"]
+
+                print(data)
+                if "generation" in data.keys():
+                    # Empty content in the context of OpenAI or Anthropic usually means
+                    # that the model is asking for a tool to be invoked.
+                    # So we only print non-empty content
+                    print(data["generation"][0].content, end="")
+                if "generation" in data.keys() and data["generation"][0].content not in response_data:
+                    response_data.append(data["generation"][0].content)
                     await manager.send_personal_message("".join(response_data), websocket)
         await manager.send_personal_message("END_OF_RESPONSE", websocket)
     except Exception as e:
@@ -265,22 +286,27 @@ async def generate_response(websocket: WebSocket, data: InputData, session_id: s
 @app.websocket("/ws/langgraph/agent/")
 async def websocket_endpoint(websocket: WebSocket):
     try:
+        await websocket.accept()
         # Recibir el primer mensaje que contiene el userData
         initial_data = await websocket.receive_json()
-        
+        print(initial_data)
         # Generar session_id basado en userData
         user_data = initial_data.get("userData", {})
         email = user_data.get("email", "")
-        
+        print(type(user_data))
         if email:
             # Generar un hash del email para usarlo como session_id
             session_id = hashlib.sha256(email.encode('utf-8')).hexdigest()
         else:
             # Generar un UUID si no hay email
             session_id = str(uuid.uuid4())
+
         #data_analyser
-        formated_data=formatter(user_data=user_data)
+        print("puede que sea aqui")
+        formated_data=formatter(user_data=UserData(**user_data))
         analysis=analyser.invoke(input={formated_data})
+    
+        print(analysis)
         await manager.connect(websocket, session_id)
         
         while True:
@@ -289,7 +315,7 @@ async def websocket_endpoint(websocket: WebSocket):
             message = InputData(message=data["message"])
             await websocket.send_text(f"Received message: {message.message}")
             # user_data_model = UserData(**user_data)
-            await generate_response(websocket, message, user_data=analysis)
+            await generate_response(websocket, message, user_data=analysis, session_id=session_id)
             # await websocket.send_text(f"Received message: {message.message}")
             # await websocket.send_text(f"Received user data: {user_data_model.email}")
     except WebSocketDisconnect:

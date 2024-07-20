@@ -110,8 +110,8 @@ def get_memories(question:str):
     memory_results = memory_chat_collection.query(query_texts=question, n_results=1)["documents"][0]
     lil_memo=get_lil_memo(question=question)
     if lil_memo:
-        lil_memo= get_lil_memo(question=question)["memorias de paciente"]
+        lil_memo= lil_memo["memorias de paciente"]
     if memory_results:
-        lil_memo.append(memory_results)
+        lil_memo.append(memory_results[0])
     lil_memo=[AIMessage(content=content) for content in lil_memo]
     return lil_memo 

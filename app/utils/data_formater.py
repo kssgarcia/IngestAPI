@@ -1,4 +1,11 @@
 def formatter(user_data):
+    activity_names = []
+    for daily_activity in user_data.dietetics.daily_activities:
+        for activity in daily_activity.activities:
+            activity_names.append(activity.name)
+
+    print(set(activity_names))
+
     formatted_data = (
             f"name:{user_data.name},"
             f"lastName:{user_data.lastName},"
@@ -22,7 +29,7 @@ def formatter(user_data):
             f"Income: {user_data.dietetics.social_indicators.income}, "
             f"Access to Healthy Foods: {user_data.dietetics.social_indicators.access_to_healthy_foods}), "
             f"Physical Activity: {user_data.dietetics.physical_activity}, "
-            f"Daily Activities: {', '.join(user_data.dietetics.daily_activities)}, "
+            f"Daily Activities: {', '.join(activity_names)}, "
             f"Activities Energy Consumption: {user_data.dietetics.activities_energy_consumption}, "
             f"Goals: (Reduce Weight: {user_data.dietetics.goals}, "
             f"Potential Diseases: (Type 2 Diabetes: {user_data.dietetics.potential_diseases}, "
