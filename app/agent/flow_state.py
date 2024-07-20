@@ -10,7 +10,7 @@ from .chains.planner import plannerchain
 from .chains.memory_decider import memo_decider
 from .chains.memory_management import summary, add_lil_memo, get_memories
 from .chains.memoryMethod.memory_setup import document_vector_store
-
+from langchain_core.runnables import RunnableConfig
 
 #mongo config
 
@@ -99,7 +99,7 @@ def inicialize(state):
     """
     return {"question":question, "sessionid":sessionid, "user_data":user_data, "nutritionBranch":nutritionRequired, "documents":documents}
 
-async def branch(state):
+async def branch(state, config: RunnableConfig):
     """
     Decides wether documents are needed or not based on the question
 
@@ -115,7 +115,7 @@ async def branch(state):
     sessionid= state["sessionid"]
     diagnosis=state["diagnosis"]
     user_data=state["user_data"]
-    required = await branchDecider.ainvoke({"sentence":question})
+    required = await branchDecider.ainvoke({"sentence":question}, config=RunnableConfig)
     return {"question":question, "nutritionBranch":required, "sessionid":sessionid, "diagnosis":diagnosis, "user_data":user_data}
 
 async def nutritionRequired(state):
@@ -142,7 +142,7 @@ async def nutritionRequired(state):
         print("---NUTRITION REQUIRED---")
         return "retrieve"
 
-async def generateCommon(state):
+async def generateCommon(state, config:RunnableConfig):
     """
     Generate common answers to the question
 
@@ -170,7 +170,7 @@ async def generateCommon(state):
     memories=get_memories(question=question)
     memories.append(user_data)
     print("---GENERATE COMMON---")
-    messages=await commonGenerator.ainvoke(input={"question":question,"messages":chat_message_history.messages[-1:-3], "memories":memories}, config={"configurable": {"session_id": sessionid}})
+    messages=await commonGenerator.ainvoke(input={"question":question,"messages":chat_message_history.messages[-1:-3], "memories":memories}, config=RunnableConfig)
         # messages.append(message.content)
     print(messages)
     return { "generation":[AIMessage(content="".join(messages))]}
@@ -178,7 +178,7 @@ async def generateCommon(state):
 
 
 
-async def retrieve(state):
+async def retrieve(state, config:RunnableConfig):
     """
     Retrieve documents
 
@@ -195,7 +195,7 @@ async def retrieve(state):
 
     # Retrieval
     # if nutritionRequired["nutrition"]=='yes':
-    documents = await retriever.ainvoke(question)
+    documents = await retriever.ainvoke(question, config=config)
     return {"documents": documents}
 
 
@@ -255,7 +255,7 @@ async def retrieve(state):
 
 
 
-async def generate(state):
+async def generate(state, config:RunnableConfig):
     """
     Generate answer
 
@@ -279,14 +279,14 @@ async def generate(state):
     if web_search=="no" and nutritionRequired["nutrition"]=='yes':
         messages=await generate.ainvoke(
         {"question": question, "context":documents, "user_data":user_data},
-        {"configurable": {"session_id": sessionid}},)
+        config=config,)
             # messages.append(message)
 
         return {"generation": [AIMessage(content=" ".join(messages))]}
     elif web_search=="yes" and nutritionRequired["nutrition"]=='yes':
         messages=await generator.ainvoke(
         {"question": question, "context":result, "user_data":user_data},
-        {"configurable": {"session_id": sessionid}},)
+        config=config,)
             # messages.append(message)
     else:
         return {"generation": [AIMessage(content="")]}
@@ -448,7 +448,7 @@ def route(state):
         return "tool"
 
 # execute tools
-async def tool_execution(state):
+async def tool_execution(state, config:RunnableConfig):
     web_search=state['web_search']
     nutritionRequired=state['nutritionBranch']
     """Worker node that executes the tools of a given plan."""
@@ -462,10 +462,10 @@ async def tool_execution(state):
             tool_input = tool_input.replace(k, v)
         if tool == "Google":
             print("Google")
-            result = await web_search.ainvoke(tool_input)
+            result = await web_search.ainvoke(tool_input, config=config)
         elif tool == "LLM":
             print("LLM")
-            result = await llm.ainvoke(tool_input)
+            result = await llm.ainvoke(tool_input, config=config)
         else:
             raise ValueError
         _results[step_name] = str(result)

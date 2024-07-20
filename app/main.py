@@ -7,6 +7,7 @@ from pydantic import BaseModel, EmailStr
 from typing import List,Optional, Dict
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Depends, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
+from contextlib import asynccontextmanager
 import io
 import logging
 import os
@@ -29,19 +30,35 @@ from fastapi.responses import JSONResponse
 from agent.graph_workflow_app import setup_lang_app
 from pprint import pprint
 
-#imagetotext
-# import ollama
 # from ollama import generate
 from langchain_community.chat_models import ChatOllama
-#llm
-
 
 #data analysis chain
 from agent.chains.analyser import analyser
 from agent.flow_state import set_analyser
-# llm = ChatOllama(model="llama3", temperature=0)
+#analyser for diagnosis generation
 analyser=set_analyser()
 
+
+
+
+#inicio y cierre de app fast api
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    client=await get_mongo_client()
+    try:
+        app.state.client = client
+        yield
+    except Exception as e:
+        logger.error(f"Error connecting to MongoDB: {str(e)}")
+    finally:
+        await client.close()  # Ensure the client is properly closed
+        logger.info("MongoDB connection closed")
+
+
+#fastapi app
+app = FastAPI(lifespan=lifespan)
 
 BASE_DIR = Path(__file__).resolve(strict=True).parent
 
@@ -72,7 +89,7 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()  # Carga las variables de entorno desde .env
 
-app = FastAPI()
+
 
 class mlPrompt(BaseModel):
     usermessage: str
@@ -113,8 +130,11 @@ async def prediction(
         # Verificación del contenido
         if not contents:
             raise HTTPException(status_code=400, detail="The file is empty")
-
-        img = Image.open(io.BytesIO(contents))
+        if contents:
+            print("************************got conteent*******************")
+            img = Image.open(io.BytesIO(contents))
+        else:
+            print("****************************no content*****************************")
 
         # Middleware para formato compatible
         if img.format.lower() not in ["jpeg", "jpg", "png"]:
@@ -126,9 +146,8 @@ async def prediction(
 
 
         # Load mongo client
-        client = await get_mongo_client()
         DB_NAME = os.getenv("MONGO_DB_NAME")
-        db = client[DB_NAME]
+        db = app.state.client[DB_NAME]
         collection = db.platos
 
         # Insertar las predicciones en MongoDB
@@ -266,18 +285,18 @@ async def generate_response(websocket: WebSocket, data: InputData, session_id: s
             print(kind)
             tags = event.get("tags", [])
             print(tags)
-            if kind == "on_chain_stream":
-                data = event["data"]["chunk"]
+            if kind == "on_chat_model_stream":
+                data = event["data"]["chunk"].cotent
 
-                print(data)
-                if "generation" in data.keys():
-                    # Empty content in the context of OpenAI or Anthropic usually means
-                    # that the model is asking for a tool to be invoked.
-                    # So we only print non-empty content
-                    print(data["generation"][0].content, end="")
-                if "generation" in data.keys() and data["generation"][0].content not in response_data:
-                    response_data.append(data["generation"][0].content)
-                    await manager.send_personal_message("".join(response_data), websocket)
+                # print(data)
+                # if "generation" in data.keys():
+                #     # Empty content in the context of OpenAI or Anthropic usually means
+                #     # that the model is asking for a tool to be invoked.
+                #     # So we only print non-empty content
+                #     print(data["generation"][0].content, end="")
+                # if "generation" in data.keys() and data["generation"][0].content not in response_data:
+                #     response_data.append(data["generation"][0].content)
+                #     await manager.send_personal_message("".join(response_data), websocket)
         await manager.send_personal_message("END_OF_RESPONSE", websocket)
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
@@ -292,21 +311,32 @@ async def websocket_endpoint(websocket: WebSocket):
         print(initial_data)
         # Generar session_id basado en userData
         user_data = initial_data.get("userData", {})
-        email = user_data.get("email", "")
-        print(type(user_data))
-        if email:
-            # Generar un hash del email para usarlo como session_id
-            session_id = hashlib.sha256(email.encode('utf-8')).hexdigest()
+        if user_data:
+            session_id = user_data.get("id", "")
         else:
-            # Generar un UUID si no hay email
             session_id = str(uuid.uuid4())
+        logger.info(f"Got: {session_id}")
 
-        #data_analyser
-        print("puede que sea aqui")
-        formated_data=formatter(user_data=UserData(**user_data))
-        analysis=analyser.invoke(input={formated_data})
-    
-        print(analysis)
+        DB_NAME = os.getenv("MONGO_DB_NAME")
+        db = app.state.client[DB_NAME]
+        diagnosis_collection = db["diagnosis"]
+
+        if session_id:
+            print("tenemos session id")
+        # Verificar si existe un diagnóstico en la colección
+        existing_diagnosis = await diagnosis_collection.find_one({"session_id": session_id})
+        print(existing_diagnosis)
+        if existing_diagnosis:
+            analysis = existing_diagnosis["analysis"]
+            print("habia documento")
+        else:
+            # Ejecutar el análisis y almacenar el resultado en la colección
+            print("puede que sea aqui")
+            formated_data = formatter(user_data=UserData(**user_data))
+            analysis = await analyser.ainvoke(input={formated_data})
+            await diagnosis_collection.insert_one({"session_id": session_id, "analysis": analysis})
+            print("diagnosis added")
+
         await manager.connect(websocket, session_id)
         
         while True:

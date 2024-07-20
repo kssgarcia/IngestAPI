@@ -52,7 +52,7 @@ def setup_lang_app():
 
     #-------- Parallel plan
     workflow2.add_edge("plan", "tool")
-    workflow2.add_conditional_edges("tool", _route, {"solve":"solve","tool":"tool"})
+    workflow2.add_conditional_edges("tool", route, {"solve":"solve","tool":"tool"})
     # workflow2.add_edge("solve", "recentmessages")
 
     workflow2.add_edge("recentmessages", END)
