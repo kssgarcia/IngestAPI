@@ -111,14 +111,13 @@ async def prediction(
         logger.info("predict function finished")
 
 
-        # Load mongo client
-        client = await get_mongo_client()
-        DB_NAME = os.getenv("MONGO_DB_NAME")
-        db = client[DB_NAME]
-        collection = db.platos
+        # # Load mongo client
+        # client = await get_mongo_client()
+        # DB_NAME = os.getenv("MONGO_DB_NAME")
+        # db = client[DB_NAME]
 
-        # Insertar las predicciones en MongoDB
-        db.predictions.insert_one(results.dict())
+        # # Insertar las predicciones en MongoDB
+        # db.predictions.insert_one(results.dict())
         logger.info("Finished the predict function")
 
         # Búsqueda vectorial
