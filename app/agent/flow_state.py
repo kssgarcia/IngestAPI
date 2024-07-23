@@ -470,7 +470,7 @@ async def tool_execution(state, config:RunnableConfig):
             tool_input = tool_input.replace(k, v)
         if tool == "Google":
             print("Google")
-            result = await web_search.ainvoke(tool_input, config=config)
+            result = await web_search_tool.ainvoke(tool_input, config=config)
         elif tool == "LLM":
             print("LLM")
             result = await llm.ainvoke(tool_input, config=config)
