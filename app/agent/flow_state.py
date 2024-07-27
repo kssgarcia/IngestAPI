@@ -8,6 +8,8 @@ from .chains.brancher import branchDecider
 from .retriever import *
 from .chains.planner import plannerchain
 from .chains.memory_decider import memo_decider
+from .chains.memory_creator import memo_creator 
+from .chains.memoryMethod.summary import summary_chain
 from .chains.memory_management import summary, add_lil_memo, get_memories
 from .chains.memoryMethod.memory_setup import document_vector_store
 from langchain_core.runnables import RunnableConfig
@@ -50,12 +52,15 @@ directly with no extra words.
 Task: {task}
 Response:"""
 
-local_llm="llama3"
+local_llm="llama3.1"
 local_llm2="phi3:mini"
-llm = ChatOllama(model="llama3", temperature=0)
-llm_json= ChatOllama(model="llama3", temperature=0, num_gpu=0, format="json")
+# llm = ChatOllama(model=local_llm, temperature=0, num_ctx=10000)
+def model() -> ChatOllama:
+    llm_json= ChatOllama(model=local_llm, temperature=0, format="json", num_ctx=10000)
+    return llm_json
+print("************************************iNICIADO MODELO****************")
 
-
+llm_json=model()
 # #Document loader
 # docuemt=document_loader(filename="TEMASDENUTRICINBSICABook.md")
 # #splitter
@@ -72,19 +77,21 @@ retriever=document_vector_store()
 retriever=retriever.as_retriever(search_type="mmr", search_kwargs={"k": 3})
 
 #Chains
-generator=generator(local_llm=local_llm, llm=llm)
+generator=generator(local_llm=local_llm, llm=llm_json)
 retrieval_grader=retrieval_grader(local_llm=local_llm, llm_json=llm_json)
 # question_rewriter=rewriter(local_llm=local_llm)
-analyser=analyser(local_llm=local_llm, llm=llm)
+analyser=analyser(local_llm=local_llm, llm=llm_json)
 
 #analyser
 def set_analyser(analyser=analyser):
     return analyser
 
 branchDecider=branchDecider(local_llm=local_llm, llm_json=llm_json)
-commonGenerator=commonGenerator(local_llm=local_llm,llm=llm)
-planner=plannerchain(local_llm=local_llm,llm=llm)
+commonGenerator=commonGenerator(local_llm=local_llm,llm=llm_json)
+planner=plannerchain(local_llm=local_llm,llm=llm_json)
 
+summary_chain=summary_chain(local_llm=local_llm, llm=llm_json)
+memo_creator=memo_creator(local_llm=local_llm, llm_json=llm_json)
 memo_decider=memo_decider(local_llm=local_llm, llm_json=llm_json)
 
 
@@ -274,7 +281,6 @@ async def generate(state):
     nutritionRequired=state["nutritionBranch"]
     result=state["result"]
     
-    messages=[]	
     # RAG generation
     if web_search=="no" and nutritionRequired["nutrition"]=='yes':
         messages=await generate.ainvoke(
@@ -289,6 +295,7 @@ async def generate(state):
         )
             # messages.append(message)
     else:
+        print("not required")
         return {"generation": [AIMessage(content="")]}
 
 
@@ -314,7 +321,7 @@ async def grade_documents(state):
     filtered_docs = []
     web_search = "no"
     print(nutritionRequired)
-    if nutritionRequired["nutrition"]=='yes':
+    if web_search=="yes" and nutritionRequired["nutrition"]=='yes':
         print("empeznado")
         for d in documents:
             print(d)
@@ -332,6 +339,7 @@ async def grade_documents(state):
 
         return {"documents": filtered_docs, "web_search": web_search}
     else:
+        print("no required")
         return {"documents": [], "web_search": web_search}
 
 
@@ -419,10 +427,10 @@ def decide_to_generate(state):
 
 #planner
 async def get_plan(state):
-    print("**********llegamos a plan")
     nutritionRequired= state["nutritionBranch"]
-    print(nutritionRequired)
-    if nutritionRequired["nutrition"]=="yes":
+    web_search=state["web_search"]
+    print(nutritionRequired.items())
+    if web_search=="yes" and nutritionRequired["nutrition"]=="yes":
         print("empezando plan")
         task = state["question"]
         result = await planner.ainvoke({"task": task})
@@ -432,6 +440,7 @@ async def get_plan(state):
         print("matches: ", matches)
         return {"steps": matches, "plan_string": result.content}
     else:
+        print("no required")
         return {"steps": [], "plan_string": ""}
     
 
@@ -455,11 +464,12 @@ def route(state):
         return "tool"
 
 # execute tools
-async def tool_execution(state, config:RunnableConfig):
+async def tool_execution(state):
     nutritionRequired=state['nutritionBranch']
-    print(nutritionRequired)
+    web_search=state["web_search"]
+    print(f"tool executor{nutritionRequired}")
     """Worker node that executes the tools of a given plan."""
-    if nutritionRequired["nutrition"]=='yes':
+    if web_search=="yes" and nutritionRequired["nutrition"]=='yes':
         print("empezando tool")
         _step = _get_current_task(state)
         print(_step)
@@ -470,15 +480,16 @@ async def tool_execution(state, config:RunnableConfig):
             tool_input = tool_input.replace(k, v)
         if tool == "Google":
             print("Google")
-            result = await web_search_tool.ainvoke(tool_input, config=config)
+            result = await web_search_tool.ainvoke(tool_input)
         elif tool == "LLM":
             print("LLM")
-            result = await llm.ainvoke(tool_input, config=config)
+            result = await llm.ainvoke(tool_input)
         else:
             raise ValueError
         _results[step_name] = str(result)
         return {"results": _results}
     else:
+        print("no required")
         return {"results": ""}
     
 
@@ -494,12 +505,12 @@ async def solve(state):
     """
     print("---Solver---")
     question = state["question"]
-
     nutritionRequired=state["nutritionBranch"]
+    web_search=state["web_search"]
 
     plan = ""
     print("puede ser por aca")
-    if nutritionRequired["nutrition"]=='yes' and state["steps"]!=[]:
+    if web_search=="yes" and nutritionRequired["nutrition"]=='yes' and state["steps"]!=[]:
         print("-------------Resolver-------------------")
         for _plan, step_name, tool, tool_input in state["steps"]:
             _results = state["results"] or {}
@@ -538,13 +549,17 @@ async def recent_messages_add(state):
     )
 
     decision=await memo_decider.ainvoke(input={"patient_message":question})
+    print(decision)
     if decision["valuableinfo"]=='yes':
-        add_lil_memo(question)
+
+        add_lil_memo(question,memocreator_runnable=memo_creator)
     
     chat=chat_message_history.messages
     if len(chat)%5==0:
-        summary(chat[-1:-5])
+        print("creando resumen")
+        summary(chat[-1:-5], summary_runnable=summary_chain)
         chat.clear()
+        print("terminado resumen")
 
     return {"memoCreated":decision["valuableinfo"]}
 

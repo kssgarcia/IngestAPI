@@ -26,7 +26,7 @@ class GraphState(TypedDict):
     documents: List[str]
     # userdata: dict = {}
     user_data:str=""
-    nutritionBranch:str
+    nutritionBranch:dict
     diagnosis:str='no'
     sessionid:str=''
     image=Image

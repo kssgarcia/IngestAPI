@@ -13,8 +13,7 @@ re_write_prompt = PromptTemplate(
 )
 
 #Rewriter
-def rewriter(local_llm:str):
-    llm = ChatOllama(model=local_llm, temperature=0)
+def rewriter(local_llm:str, llm:ChatOllama):
 
     question_rewriter = re_write_prompt | llm | StrOutputParser()
     return question_rewriter

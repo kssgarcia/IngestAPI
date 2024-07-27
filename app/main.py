@@ -35,11 +35,13 @@ from langchain_community.chat_models import ChatOllama
 
 #data analysis chain
 from agent.chains.analyser import analyser
+from agent.chains.generator_chain import generate_common
 from agent.flow_state import set_analyser
+from agent.flow_state import model
 #analyser for diagnosis generation
 analyser=set_analyser()
-
-
+llm=model()
+generate_common=generate_common(local_llm="llama3.1", llm=llm)
 
 
 #inicio y cierre de app fast api
@@ -280,6 +282,7 @@ async def generate_response(websocket: WebSocket, data: InputData, session_id: s
     try:
         inputs = {"question": data.message, "sessionid": session_id, "user_data":user_data}
         response_data = []
+        await manager.send_personal_message("START_OF_RESPONSE", websocket)
         async for event in langgraph_app.astream_events(input=inputs, version="v2"):
             kind = event["event"]
             tags = event.get("tags", [])
@@ -292,7 +295,10 @@ async def generate_response(websocket: WebSocket, data: InputData, session_id: s
                     print(data, end="")
                 if data not in response_data:
                     response_data.append(data)
-                    await manager.send_personal_message("".join(response_data), websocket)
+                    # await manager.send_personal_message("".join(response_data), websocket)
+                    print(data)
+                    await manager.send_personal_message(data, websocket)
+        print(response_data)
         await manager.send_personal_message("END_OF_RESPONSE", websocket)
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
@@ -304,7 +310,8 @@ async def websocket_endpoint(websocket: WebSocket):
         await websocket.accept()
         # Recibir el primer mensaje que contiene el userData
         initial_data = await websocket.receive_json()
-        print(initial_data)
+        print(initial_data["message"])
+
         # Generar session_id basado en userData
         user_data = initial_data.get("userData", {})
         if user_data:
@@ -333,17 +340,25 @@ async def websocket_endpoint(websocket: WebSocket):
             await diagnosis_collection.insert_one({"session_id": session_id, "analysis": analysis})
             print("diagnosis added")
 
+
+        if initial_data["message"]:
+            await manager.send_personal_message("START_OF_RESPONSE", websocket)
+            async for chunk in generate_common.astream(input={"question":initial_data["message"]}, config={"configurable": {"session_id": session_id}}):
+                await manager.send_personal_message(chunk, websocket)
+            await manager.send_personal_message("END_OF_RESPONSE", websocket)
+
         await manager.connect(websocket, session_id)
         
         while True:
             data = await websocket.receive_json()
             print(data["message"])
             message = InputData(message=data["message"])
-            await websocket.send_text(f"Received message: {message.message}")
+            # await websocket.send_text(f"Received message: {message.message}")
             # user_data_model = UserData(**user_data)
             await generate_response(websocket, message, user_data=analysis, session_id=session_id)
             # await websocket.send_text(f"Received message: {message.message}")
             # await websocket.send_text(f"Received user data: {user_data_model.email}")
+            
     except WebSocketDisconnect:
         manager.disconnect(websocket)
         logger.info("WebSocket disconnected")

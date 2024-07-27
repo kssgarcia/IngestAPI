@@ -31,9 +31,9 @@ memory_prompt = PromptTemplate(
         input_variables=["statement"] 
     )
 
-def memo_creator(local_llm:str, memory_prompt:PromptTemplate=memory_prompt):
-    llm = ChatOllama(model=local_llm, temperature=0, format="json")
+def memo_creator(local_llm:str,llm_json:ChatOllama, memory_prompt:PromptTemplate=memory_prompt, ):
+
     #memories chain
-    memo_creator=memory_prompt | llm | JsonOutputParser()
+    memo_creator=memory_prompt | llm_json | JsonOutputParser()
     
     return memo_creator

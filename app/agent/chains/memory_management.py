@@ -8,8 +8,6 @@ from langchain_core.messages import AIMessage, HumanMessage
 
 local_llm="llama3"
 
-memo_creator=memo_creator(local_llm=local_llm)
-summary_chain=summary_chain(local_llm=local_llm)
 
 def add_memory(messages: list):
     document = [message.content for message in messages]
@@ -40,8 +38,8 @@ def deletesummaries():
     memory_chat_collection.delete(ids=memory_chat_collection.get()['ids'])
 
 
-def add_lil_memo(query:str):
-
+def add_lil_memo(query:str, memocreator_runnable):
+    memo_creator=memocreator_runnable
     lil_memo=memo_creator.invoke(input={"statement":query})
     memories=lil_memo['memories']
     # Generar un UUID único para el problem_id
@@ -101,7 +99,8 @@ def get_lil_memo(question):
         return resultados_iniciales["documents"][0]
     
 
-def summary(chat:list):
+def summary(chat:list, summary_runnable):
+    summary_chain=summary_runnable
     content=summary_chain.invoke({"chat_history":chat})
     summary=AIMessage(content=content)
     add_memory([summary])

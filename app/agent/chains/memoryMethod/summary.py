@@ -6,7 +6,6 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_community.chat_models import ChatOllama
 
-llm = ChatOllama(model="llama3", temperature=0)
 
 summarization_prompt = ChatPromptTemplate.from_messages(
         [
@@ -44,9 +43,8 @@ summarization_prompt = ChatPromptTemplate.from_messages(
     )
 
 
-def summary_chain(local_llm:str, summarization_prompt:ChatPromptTemplate=summarization_prompt):
+def summary_chain(local_llm:str, llm:ChatOllama, summarization_prompt:ChatPromptTemplate=summarization_prompt, ):
     #llm
-    llm = ChatOllama(model=local_llm, temperature=0)
     #summary chain
     summary_chain = summarization_prompt | llm | StrOutputParser()
     return summary_chain
