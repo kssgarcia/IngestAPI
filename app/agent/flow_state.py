@@ -56,7 +56,7 @@ local_llm="llama3.1"
 local_llm2="phi3:mini"
 # llm = ChatOllama(model=local_llm, temperature=0, num_ctx=10000)
 def model() -> ChatOllama:
-    llm_json= ChatOllama(model=local_llm, temperature=0, format="json", num_ctx=10000)
+    llm_json= ChatOllama(base_url = "https://3156r4rp-11434.use2.devtunnels.ms", model=local_llm, temperature=0, format="json", num_ctx=10000, )
     return llm_json
 print("************************************iNICIADO MODELO****************")
 

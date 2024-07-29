@@ -285,6 +285,7 @@ async def generate_response(websocket: WebSocket, data: InputData, session_id: s
         await manager.send_personal_message("START_OF_RESPONSE", websocket)
         async for event in langgraph_app.astream_events(input=inputs, version="v2"):
             kind = event["event"]
+            print(kind)
             tags = event.get("tags", [])
             if kind == "on_chat_model_stream" and "tool_llm" in tags:
                 data = event["data"]["chunk"].content
