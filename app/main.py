@@ -319,7 +319,7 @@ async def websocket_endpoint(websocket: WebSocket):
             session_id = user_data.get("id", "")
         else:
             session_id = str(uuid.uuid4())
-        logger.info(f"Got: {session_id}")
+        logger.info(f"Got: {session_id}")  
 
         DB_NAME = os.getenv("MONGO_DB_NAME")
         db = app.state.client[DB_NAME]

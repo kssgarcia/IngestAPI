@@ -1,6 +1,4 @@
 #chroma
-
-from langchain_community.embeddings import GPT4AllEmbeddings
 from langchain_chroma import Chroma
 import chromadb
 
