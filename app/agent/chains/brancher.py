@@ -1,6 +1,5 @@
 ##Decider
 from langchain_community.chat_models import ChatOllama
-from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import PromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
 

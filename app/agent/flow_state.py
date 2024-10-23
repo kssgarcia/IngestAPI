@@ -1,5 +1,4 @@
 #state flow definition
-from langchain.schema import Document
 from .chains.generator_chain import *
 from .chains.retriever_grader_chain import retrieval_grader
 from .chains.rewriter_chain import rewriter
@@ -12,7 +11,10 @@ from .chains.memory_creator import memo_creator
 from .chains.memoryMethod.summary import summary_chain
 from .chains.memory_management import summary, add_lil_memo, get_memories
 from .chains.memoryMethod.memory_setup import document_vector_store
-from langchain_core.runnables import RunnableConfig
+
+
+#message templates
+from langchain_core.messages import AIMessage
 
 #mongo config
 
@@ -24,15 +26,11 @@ MONGO_PASSWORD = os.getenv("MONGO_PASSWORD")
 # Obtener la cadena de conexión desde una variable de entorno
 mongo_uri = f"mongodb+srv://Yilberu:bnnjgIKAm2WzEwd2@cluster0.q4lvimh.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 
-#state
-from .graph_state import GraphState, Query
 
 #web tool library
 # Web search
 from langchain_community.retrievers import TavilySearchAPIRetriever
 
-#memory libraries
-from langchain_community.chat_message_histories import ChatMessageHistory
 
 #planner
 import re
@@ -163,6 +161,8 @@ async def generateCommon(state):
     question = state["question"]
     sessionid= state["sessionid"]
     user_data=state["user_data"]
+    required=state["nutritionBranch"]
+    print(required)
     # messages = []
 
     chat_message_history = MongoDBChatMessageHistory(
@@ -171,15 +171,14 @@ async def generateCommon(state):
     database_name="snapeatdb",
     collection_name="chatHistories",
     )
-    print(chat_message_history.messages[-1:-3])
+    # print(chat_message_history.messages[-1:-3])
     
-    # if required["nutrition"]=='no':
-    memories=get_memories(question=question)
-    memories.append(user_data)
-    print("---GENERATE COMMON---")
-    messages=await commonGenerator.ainvoke(input={"question":question,"messages":chat_message_history.messages[-1:-3], "memories":memories}, config={"configurable": {"session_id": sessionid}})
+    if required["nutrition"]=='no':
+        memories=get_memories(question=question)
+        memories.append(user_data)
+        print("---GENERATE COMMON---")
+        messages=await commonGenerator.ainvoke(input={"question":question,"messages":chat_message_history.messages[-1:-3], "memories":[]}, config={"configurable": {"session_id": sessionid}})
         # messages.append(message.content)
-    print(messages)
     return { "generation":[AIMessage(content="".join(messages))]}
 
 

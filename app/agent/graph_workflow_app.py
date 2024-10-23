@@ -60,18 +60,4 @@ def setup_lang_app():
     app2 = workflow2.compile()
 
     return app2
-# langgraph_app=setup_lang_app()
 
-# thread = {"configurable": {"thread_id": "4"}}
-# result = []
-# inputs = {"question": "nutricion, hablame"}
-# for event in langgraph_app.stream(inputs, stream_mode="values"):
-#     for key, value in event.items():
-#         # Node
-#         (f"Node '{key}':")
-#         # Optional: print full state at each node
-#         # pprint.pprint(value["keys"], indent=2, width=80, depth=None)
-#     pprint("\n---\n")
-# pprint(value["generation"])
-# # except Exception as e:
-# #     raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")

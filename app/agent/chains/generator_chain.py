@@ -1,10 +1,6 @@
 #generatior libraries
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.messages import AIMessage, HumanMessage
-from langchain_core.runnables.history import RunnableWithMessageHistory
-from langchain_core.runnables import RunnablePassthrough
-from langchain_community.chat_message_histories.sql import SQLChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 from langchain_community.chat_models import ChatOllama
 import os
